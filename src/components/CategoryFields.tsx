@@ -115,7 +115,7 @@ function CategoryFieldItem({
           type="text"
           value={category.name}
           onChange={(e) => onUpdate(category.id, e.target.value)}
-          placeholder="Select categories"
+          placeholder="Drag column or type"
           className="w-full text-xs bg-transparent outline-none text-gray-900 placeholder-gray-400"
         />
       </div>
@@ -151,7 +151,12 @@ export function CategoryFields({ categories, onChange }: CategoryFieldsProps) {
   };
 
   const removeCategory = (id: string) => {
-    onChange(categories.filter((cat) => cat.id !== id));
+    const next = categories.filter((cat) => cat.id !== id);
+    if (next.length === 0) {
+      onChange([{ id: `cat_${Date.now()}`, name: '', level: 0 }]);
+      return;
+    }
+    onChange(next);
   };
 
   const changeCategoryLevel = (id: string, direction: 'left' | 'right') => {
@@ -167,76 +172,7 @@ export function CategoryFields({ categories, onChange }: CategoryFieldsProps) {
   };
 
   const handleDrop = (id: string, sourceField: SourceField) => {
-    const value = sourceField.value || '';
-    
-    // Check if value contains hierarchy separator (>)
-    if (value.includes('>')) {
-      const parts = value.split('>').map((s) => s.trim());
-      const targetIndex = categories.findIndex((c) => c.id === id);
-      
-      // Create hierarchical categories
-      const newCategories = [...categories];
-      parts.forEach((part, idx) => {
-        if (idx === 0) {
-          // Update the target category
-          newCategories[targetIndex] = { ...newCategories[targetIndex], name: part, level: 0 };
-        } else {
-          // Insert child categories after
-          const insertIndex = targetIndex + idx;
-          if (insertIndex < newCategories.length) {
-            newCategories.splice(insertIndex, 0, {
-              id: `cat_${Date.now()}_${idx}`,
-              name: part,
-              level: idx,
-            });
-          } else {
-            newCategories.push({
-              id: `cat_${Date.now()}_${idx}`,
-              name: part,
-              level: idx,
-            });
-          }
-        }
-      });
-      
-      onChange(newCategories);
-    } 
-    // Check if value contains comma separator (,)
-    else if (value.includes(',')) {
-      const parts = value.split(',').map((s) => s.trim());
-      const targetIndex = categories.findIndex((c) => c.id === id);
-      
-      // Create flat categories (all level 0)
-      const newCategories = [...categories];
-      parts.forEach((part, idx) => {
-        if (idx === 0) {
-          // Update the target category
-          newCategories[targetIndex] = { ...newCategories[targetIndex], name: part, level: 0 };
-        } else {
-          // Insert sibling categories after
-          const insertIndex = targetIndex + idx;
-          if (insertIndex < newCategories.length) {
-            newCategories.splice(insertIndex, 0, {
-              id: `cat_${Date.now()}_${idx}`,
-              name: part,
-              level: 0,
-            });
-          } else {
-            newCategories.push({
-              id: `cat_${Date.now()}_${idx}`,
-              name: part,
-              level: 0,
-            });
-          }
-        }
-      });
-      
-      onChange(newCategories);
-    } 
-    // Single value - just update the category name
-    else {
-      updateCategory(id, value);
-    }
+    updateCategory(id, `{${sourceField.name}}`);
   };
 
   const addCategory = () => {
@@ -270,7 +206,7 @@ export function CategoryFields({ categories, onChange }: CategoryFieldsProps) {
         className="text-xs text-blue-600 hover:underline flex items-center gap-1 mt-2"
       >
         <Plus className="w-3 h-3" />
-        Добавить категорию
+        Add Category
       </button>
     </div>
   );

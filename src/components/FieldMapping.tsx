@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, ChangeEvent, Dispatch, SetStateAction } from 'react';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -18,10 +18,35 @@ import { VariationsTab } from './VariationsTab';
 import { GroupedTab } from './GroupedTab';
 import { DatePickerWithFooter } from './DatePickerWithFooter';
 import { CategoryFields } from './CategoryFields';
+import { addCacheBuster, getWpNonce } from '../utils/api';
 
 interface FieldMappingProps {
   onBack: () => void;
   onNext: () => void;
+  previewData?: {
+    headers: string[];
+    rows: any[][];
+    file_id: string;
+    original_name: string;
+  };
+  mappings?: Mapping[];
+  setMappings?: Dispatch<SetStateAction<Mapping[]>>;
+  attributes?: ProductAttribute[];
+  setAttributes?: Dispatch<SetStateAction<ProductAttribute[]>>;
+  categories?: CategoryField[];
+  setCategories?: Dispatch<SetStateAction<CategoryField[]>>;
+  productType?: 'simple' | 'variable' | 'grouped';
+  setProductType?: Dispatch<SetStateAction<'simple' | 'variable' | 'grouped'>>;
+  onApplyTemplateProfile?: (profileId: number) => Promise<void> | void;
+  onUndoTemplateApply?: () => void;
+  canUndoTemplateApply?: boolean;
+  isApplyingTemplate?: boolean;
+  templateAppliedProfileName?: string | null;
+}
+
+interface TemplateProfileOption {
+  id: number;
+  name: string;
 }
 
 interface SourceField {
@@ -43,8 +68,10 @@ interface TargetField {
 }
 
 interface Mapping {
-  sourceFieldId: string;
+  id?: string;
+  sourceFieldId?: string | null;
   targetFieldId: string;
+  manualValue?: string;
 }
 
 interface ProductAttribute {
@@ -119,7 +146,8 @@ function AttributeRow({
   const [{ isOverName }, dropName] = useDrop({
     accept: 'FIELD',
     drop: (item: { field: SourceField }) => {
-      onUpdate(attribute.id, 'name', item.field.value);
+      // Map column name as the attribute name
+      onUpdate(attribute.id, 'name', item.field.name);
     },
     collect: (monitor) => ({
       isOverName: monitor.isOver(),
@@ -129,7 +157,8 @@ function AttributeRow({
   const [{ isOverValues }, dropValues] = useDrop({
     accept: 'FIELD',
     drop: (item: { field: SourceField }) => {
-      onUpdate(attribute.id, 'values', item.field.value);
+      // Map column value with placeholder for dynamic retrieval
+      onUpdate(attribute.id, 'values', `{${item.field.name}}`);
     },
     collect: (monitor) => ({
       isOverValues: monitor.isOver(),
@@ -138,20 +167,29 @@ function AttributeRow({
 
   return (
     <div
-      ref={(node) => preview(drop(node))}
+      ref={(node) => {
+        preview(drop(node));
+      }}
       className={`bg-white border border-gray-300 rounded-lg p-3 ${isDragging ? 'opacity-50' : ''}`}
     >
       <div className="flex items-center gap-3">
         {/* Drag Handle */}
         <div
-          ref={drag}
+          ref={(node) => {
+            drag(node);
+          }}
           className="cursor-move p-1 hover:bg-gray-100 rounded"
         >
           <GripVertical className="w-4 h-4 text-gray-400" />
         </div>
 
         {/* Name Field */}
-        <div className="flex-1" ref={dropName}>
+        <div
+          className="flex-1"
+          ref={(node) => {
+            dropName(node);
+          }}
+        >
           <input
             type="text"
             value={attribute.name}
@@ -159,12 +197,17 @@ function AttributeRow({
             className={`w-full px-3 py-2 border rounded text-sm transition-all ${
               isOverName ? 'border-green-500 bg-green-50' : 'border-gray-300'
             }`}
-            placeholder="Name"
+            placeholder="Name (e.g. Color)"
           />
         </div>
 
         {/* Values Field */}
-        <div className="flex-[2]" ref={dropValues}>
+        <div
+          className="flex-[2]"
+          ref={(node) => {
+            dropValues(node);
+          }}
+        >
           <input
             type="text"
             value={attribute.values}
@@ -172,23 +215,21 @@ function AttributeRow({
             className={`w-full px-3 py-2 border rounded text-sm transition-all ${
               isOverValues ? 'border-green-500 bg-green-50' : 'border-gray-300'
             }`}
-            placeholder="Values"
+            placeholder="Values (e.g. Red | Blue or {Column})"
           />
         </div>
 
         {/* Checkboxes */}
         <div className="flex items-center gap-4 text-xs">
-          {productType === 'variable' && (
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={attribute.inVariations}
-                onChange={(e) => onUpdate(attribute.id, 'inVariations', e.target.checked)}
-                className="attribute-checkbox"
-              />
-              <span className="text-gray-700">In Variations</span>
-            </label>
-          )}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={attribute.inVariations}
+              onChange={(e) => onUpdate(attribute.id, 'inVariations', e.target.checked)}
+              className="attribute-checkbox"
+            />
+            <span className="text-gray-700">Variations</span>
+          </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -196,7 +237,7 @@ function AttributeRow({
               onChange={(e) => onUpdate(attribute.id, 'isVisible', e.target.checked)}
               className="attribute-checkbox"
             />
-            <span className="text-gray-700">Is Visible</span>
+            <span className="text-gray-700">Visible</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -205,7 +246,7 @@ function AttributeRow({
               onChange={(e) => onUpdate(attribute.id, 'isTaxonomy', e.target.checked)}
               className="attribute-checkbox"
             />
-            <span className="text-gray-700">Is Taxonomy</span>
+            <span className="text-gray-700">Taxonomy</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -214,7 +255,7 @@ function AttributeRow({
               onChange={(e) => onUpdate(attribute.id, 'autoCreateTerms', e.target.checked)}
               className="attribute-checkbox"
             />
-            <span className="text-gray-700">Auto-Create Terms</span>
+            <span className="text-gray-700">Create Terms</span>
           </label>
         </div>
 
@@ -241,7 +282,9 @@ function SourceFieldItem({ field, isMapped }: { field: SourceField; isMapped: bo
 
   return (
     <tr
-      ref={drag}
+      ref={(node) => {
+        drag(node as any);
+      }}
       className={`border-b border-gray-200 cursor-move transition-all ${
         isDragging ? 'opacity-50' : ''
       } ${isMapped ? 'bg-green-50' : 'hover:bg-gray-50'}`}
@@ -264,13 +307,17 @@ function SourceFieldItem({ field, isMapped }: { field: SourceField; isMapped: bo
 function DropZoneField({ 
   field, 
   mappedSourceField, 
+  manualValue = '',
   onDrop, 
-  onRemove 
+  onRemove,
+  onManualChange
 }: { 
   field: TargetField; 
   mappedSourceField?: SourceField;
+  manualValue?: string;
   onDrop: (sourceField: SourceField, targetField: TargetField) => void;
   onRemove: (targetFieldId: string) => void;
+  onManualChange?: (targetFieldId: string, value: string) => void;
 }) {
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: 'FIELD',
@@ -283,63 +330,216 @@ function DropZoneField({
     }),
   }));
 
-  const getBorderColor = () => {
-    if (isOver && canDrop) return 'border-green-500 bg-green-50';
-    if (mappedSourceField) return 'border-blue-300 bg-blue-50';
-    if (field.required) return 'border-orange-300';
-    return 'border-gray-300';
+  const handleManualInputChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    onManualChange?.(field.id, event.target.value);
+  };
+
+  const hasManualValue = manualValue?.trim().length > 0;
+  
+  // Build preview: replace {value} with mapped value
+  const buildPreview = () => {
+    if (!hasManualValue && !mappedSourceField) return '';
+    if (!hasManualValue) return mappedSourceField?.value || '';
+    if (!mappedSourceField) return manualValue;
+    // Replace {value} placeholder with actual mapped value
+    return manualValue.replace(/{value}/g, mappedSourceField.value);
+  };
+  
+  const previewValue = buildPreview();
+  const displayValue = hasManualValue ? manualValue : (mappedSourceField ? mappedSourceField.value : manualValue);
+  
+  // Generate field-specific placeholder
+  const getPlaceholder = (): string => {
+    const fieldId = field.id.toLowerCase();
+    
+    // Field-specific examples
+    if (fieldId.includes('title') || fieldId.includes('name')) {
+      return 'Drag column or type: {value} - New Edition';
+    }
+    if (fieldId.includes('sku')) {
+      return 'Drag column or type: PREFIX-{value}';
+    }
+    if (fieldId.includes('price') || fieldId.includes('cost')) {
+      return 'Drag column or type static value';
+    }
+    if (fieldId.includes('description')) {
+      return 'Drag column or type: {value}\n\nAdditional info here';
+    }
+    if (fieldId.includes('brand')) {
+      return 'Drag column or type brand name';
+    }
+    if (fieldId.includes('tag') || fieldId.includes('category')) {
+      return 'Drag column or type: {value}, Extra Tag';
+    }
+    if (fieldId.includes('image') || fieldId.includes('gallery')) {
+      return 'Drag column with image URLs';
+    }
+    if (fieldId.includes('weight') || fieldId.includes('length') || fieldId.includes('width') || fieldId.includes('height')) {
+      return 'Drag column or type value';
+    }
+    
+    // Default placeholder
+    return field.placeholder || 'Drag column or type value (use {value} for mapped data)';
   };
 
   return (
-    <div
-      ref={drop}
-      className={`relative border-2 rounded-lg p-3 transition-all ${getBorderColor()}`}
-    >
-      <label className="block text-sm text-gray-600 mb-1">
-        {field.label}
-        {field.required && <span className="text-red-500 ml-1">*</span>}
-      </label>
-      
-      {mappedSourceField ? (
-        <div className="flex items-center justify-between bg-white border border-gray-300 rounded px-3 py-2">
-          <div className="flex items-center gap-2 flex-1">
-            <LinkIcon className="w-4 h-4 text-blue-600" />
-            <span className="text-sm text-gray-900">{mappedSourceField.name || `Column ${mappedSourceField.columnIndex}`}</span>
-            <span className="text-xs text-gray-500">→</span>
-            <span className="text-sm text-gray-600">{mappedSourceField.value}</span>
-          </div>
+    <div className="relative">
+      <div className="flex items-center gap-2 mb-1">
+        <label className="block text-sm text-gray-600">
+          {field.label}
+          {field.required && <span className="text-red-500 ml-1">*</span>}
+        </label>
+        {(mappedSourceField || hasManualValue) && (
           <button
             onClick={() => onRemove(field.id)}
-            className="ml-2 p-1 hover:bg-gray-100 rounded transition-colors"
+            className="ml-auto p-1 hover:bg-gray-100 rounded"
+            title="Clear mapping"
           >
             <X className="w-4 h-4 text-gray-500" />
           </button>
-        </div>
-      ) : (
-        <div className={`border-2 border-dashed rounded px-3 py-2 text-sm text-gray-400 ${
-          isOver && canDrop ? 'border-green-500' : 'border-gray-300'
-        }`}>
-          {field.placeholder || 'Drag field here'}
-        </div>
+        )}
+      </div>
+      
+      <div
+        ref={(node) => {
+          drop(node);
+        }}
+      >
+        {['textarea', 'image', 'multiselect'].includes(field.type) ? (
+          <textarea
+            rows={field.type === 'textarea' ? 4 : 3}
+            value={displayValue || ''}
+            onChange={handleManualInputChange}
+            placeholder={getPlaceholder()}
+            className={`w-full px-3 py-2 border-2 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-red-400 transition-all resize-none ${
+              isOver && canDrop 
+                ? 'border-green-500 bg-green-50' 
+                : hasManualValue 
+                ? 'border-green-300 bg-green-50' 
+                : mappedSourceField
+                ? 'border-blue-300 bg-blue-50'
+                : field.required
+                ? 'border-orange-300'
+                : 'border-gray-300'
+            }`}
+          />
+        ) : (
+          <input
+            type="text"
+            value={displayValue || ''}
+            onChange={handleManualInputChange}
+            placeholder={getPlaceholder()}
+            className={`w-full px-3 py-2 border-2 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-red-400 transition-all ${
+              isOver && canDrop 
+                ? 'border-green-500 bg-green-50' 
+                : hasManualValue 
+                ? 'border-green-300 bg-green-50' 
+                : mappedSourceField
+                ? 'border-blue-300 bg-blue-50'
+                : field.required
+                ? 'border-orange-300'
+                : 'border-gray-300'
+            }`}
+          />
+        )}
+      </div>
+      
+      {previewValue && previewValue !== displayValue && (
+        <p className="text-[11px] text-blue-600 mt-1">
+          Preview: <span className="font-medium">{previewValue}</span>
+        </p>
+      )}
+      
+      {hasManualValue && !mappedSourceField && (
+        <p className="text-[11px] text-green-600 mt-1">✔ Manual value will be used</p>
       )}
     </div>
   );
 }
 
-function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
+function FieldMappingContent({
+  onBack,
+  onNext,
+  previewData,
+  mappings: propMappings,
+  setMappings: propSetMappings,
+  attributes: propAttributes,
+  setAttributes: propSetAttributes,
+  categories: propCategories,
+  setCategories: propSetCategories,
+  productType: propProductType,
+  setProductType: propSetProductType,
+  onApplyTemplateProfile,
+  onUndoTemplateApply,
+  canUndoTemplateApply,
+  isApplyingTemplate,
+  templateAppliedProfileName,
+}: FieldMappingProps) {
+  
   const [currentRow, setCurrentRow] = useState(0);
-  const [productType, setProductType] = useState<'simple' | 'variable' | 'grouped'>('simple');
-  const [mappings, setMappings] = useState<Mapping[]>([
-    { id: '1', sourceFieldId: 'title', targetFieldId: 'title' },
-    { id: '2', sourceFieldId: 'price', targetFieldId: 'regular_price' },
-    { id: '3', sourceFieldId: 'sku', targetFieldId: 'sku' },
-  ]);
-  const [sourceFields] = useState<SourceField[]>(generateSampleData(currentRow));
+  const [localProductType, setLocalProductType] = useState<'simple' | 'variable' | 'grouped'>('simple');
+  const productType = propProductType ?? localProductType;
+  const setProductType = propSetProductType ?? setLocalProductType;
+  const isPro = Boolean((window as any).pifwcAdmin?.isPro);
+  
+  // Use mappings from props if available, otherwise use local state
+  const mappings = propMappings || [];
+  const setMappings = propSetMappings || (() => {});
+  
+  // Use attributes from props if available, otherwise use empty array
+  const attributes = propAttributes || [];
+  const setAttributes = propSetAttributes || (() => {});
+  
+  const [sourceFields, setSourceFields] = useState<SourceField[]>([]);
   const [activeTab, setActiveTab] = useState<'general' | 'inventory' | 'shipping' | 'linked' | 'attributes' | 'variations' | 'grouped'>('general');
-  const [attributes, setAttributes] = useState<ProductAttribute[]>([
-    { id: '1', name: 'Color', values: 'Red | Blue | Green', inVariations: true, isVisible: true, isTaxonomy: false, autoCreateTerms: true },
-    { id: '2', name: 'Size', values: 'Small | Medium | Large', inVariations: true, isVisible: true, isTaxonomy: false, autoCreateTerms: true },
-  ]);
+
+  useEffect(() => {
+    if (!isPro && (productType === 'variable' || productType === 'grouped')) {
+      setProductType('simple');
+    }
+  }, [isPro, productType, setProductType]);
+
+  useEffect(() => {
+    if (productType === 'variable') {
+      setActiveTab('variations');
+      return;
+    }
+    if (productType === 'grouped') {
+      setActiveTab('grouped');
+      return;
+    }
+    setActiveTab('general');
+  }, [productType]);
+  
+  // Use real data from uploaded file if available, otherwise use mock data
+  const generateSourceFields = (): SourceField[] => {
+    if (previewData && previewData.headers && previewData.rows && previewData.rows.length > 0) {
+      // Check if currentRow is within bounds
+      if (currentRow >= previewData.rows.length) {
+        return [];
+      }
+      
+      const rowData = previewData.rows[currentRow];
+      
+      // Create unique fields based on header + columnIndex to avoid duplicates
+      const fields = previewData.headers.map((header, index) => ({
+        id: `field_${index}_${currentRow}`, // Use index instead of header to ensure uniqueness
+        name: header,
+        value: rowData[index] || '',
+        columnIndex: index + 1,
+        isMapped: false
+      }));
+      
+      return fields;
+    }
+    return generateSampleData(currentRow);
+  };
+
+  // Initialize and update source fields when previewData or currentRow changes
+  useEffect(() => {
+    const fields = generateSourceFields();
+    setSourceFields(fields);
+  }, [currentRow, previewData]);
   const [variationModel, setVariationModel] = useState<'classic' | 'no-parent-sku' | 'auto-sku' | 'shared-price'>('classic');
   const [groupedModel, setGroupedModel] = useState<'classic' | 'no-parent-sku' | 'auto-create' | 'bundle'>('classic');
   const [postStatus, setPostStatus] = useState<string>('published');
@@ -347,13 +547,103 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
   const [asSpecifiedDate, setAsSpecifiedDate] = useState<Date | null>(new Date());
   const [randomStartDate, setRandomStartDate] = useState<Date | null>(new Date());
   const [randomEndDate, setRandomEndDate] = useState<Date | null>(new Date());
-  const [categories, setCategories] = useState<CategoryField[]>([
+  const [localCategories, setLocalCategories] = useState<CategoryField[]>([
     { id: 'cat_1', name: '', level: 0 },
     { id: 'cat_2', name: '', level: 0 },
     { id: 'cat_3', name: '', level: 0 },
     { id: 'cat_4', name: '', level: 0 },
     { id: 'cat_5', name: '', level: 0 },
   ]);
+
+  const categories = propCategories || localCategories;
+  const setCategories = propSetCategories || setLocalCategories;
+
+  const [templateProfiles, setTemplateProfiles] = useState<TemplateProfileOption[]>([]);
+  const [isLoadingTemplateProfiles, setIsLoadingTemplateProfiles] = useState(false);
+  const [selectedTemplateProfileId, setSelectedTemplateProfileId] = useState<number | ''>('');
+  const [templateProfilesError, setTemplateProfilesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchProfiles = async () => {
+      try {
+        setIsLoadingTemplateProfiles(true);
+        setTemplateProfilesError(null);
+
+        const nonce = getWpNonce();
+        if (!nonce) {
+          setTemplateProfilesError('Missing REST nonce. Please reload the page.');
+          return;
+        }
+
+        const restBase = (window as any).pifwcAdmin?.restUrl;
+        const candidates: string[] = [];
+
+        if (typeof restBase === 'string' && restBase.trim() !== '') {
+          const normalizedBase = restBase.endsWith('/') ? restBase : `${restBase}/`;
+          candidates.push(`${normalizedBase}profiles?limit=100`);
+        }
+
+        candidates.push('/wp-json/pifwc/v1/profiles?limit=100');
+
+        let lastError: string | null = null;
+
+        for (const candidate of candidates) {
+          const url = addCacheBuster(candidate);
+          try {
+            const response = await fetch(url, {
+              headers: {
+                'X-WP-Nonce': nonce,
+              },
+              credentials: 'same-origin',
+            });
+
+            if (!response.ok) {
+              const body = await response.text();
+              lastError = `HTTP ${response.status}: ${body}`;
+              continue;
+            }
+
+            const data = await response.json();
+            if (data.status === 'success' && Array.isArray(data.data?.profiles)) {
+              const normalized = (data.data.profiles as any[])
+                .map((p) => {
+                  const rawId = p?.id;
+                  const idNum = typeof rawId === 'number'
+                    ? rawId
+                    : (typeof rawId === 'string' ? parseInt(rawId, 10) : NaN);
+                  if (!Number.isFinite(idNum) || idNum <= 0) {
+                    return null;
+                  }
+                  const name = typeof p?.name === 'string' && p.name.trim() !== ''
+                    ? p.name
+                    : `Profile #${idNum}`;
+                  return { id: idNum, name };
+                })
+                .filter((p): p is TemplateProfileOption => !!p);
+              setTemplateProfiles(normalized);
+              lastError = null;
+              break;
+            }
+
+            lastError = 'Unexpected API response format.';
+          } catch (innerErr) {
+            lastError = innerErr instanceof Error ? innerErr.message : String(innerErr);
+          }
+        }
+
+        if (lastError) {
+          setTemplateProfilesError(lastError);
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setTemplateProfilesError(msg);
+      } finally {
+        setIsLoadingTemplateProfiles(false);
+      }
+    };
+
+    fetchProfiles();
+  }, []);
 
   const targetFields: TargetField[] = [
     // General Section
@@ -366,16 +656,17 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
     { id: 'sale_price', label: 'Sale Price', type: 'number', placeholder: '0.00', required: false, section: 'pricing' },
     
     // Inventory Section
-    { id: 'sku', label: 'Артикул', type: 'text', placeholder: 'Enter SKU', required: true, section: 'inventory' },
-    { id: 'gtin_upc_ean', label: 'GTIN, UPC, EAN или ISBN', type: 'text', placeholder: '', required: false, section: 'inventory' },
-    { id: 'stock_quantity', label: 'Количество', type: 'number', placeholder: '1', required: false, section: 'inventory' },
-    { id: 'backorder_status', label: 'Разрешить предзаказы?', type: 'select', placeholder: 'Select backorder status', required: false, section: 'inventory' },
-    { id: 'low_stock_threshold', label: 'Граница малых запасов', type: 'text', placeholder: 'Порог для всего магазина (2)', required: false, section: 'inventory' },
-    { id: 'sold_individually', label: 'Ограничение покупок до 1 товара в заказе', type: 'select', placeholder: '', required: false, section: 'inventory' },
+    { id: 'sku', label: 'SKU', type: 'text', placeholder: 'Enter SKU', required: true, section: 'inventory' },
+    { id: 'gtin_upc_ean', label: 'GTIN, UPC, EAN or ISBN', type: 'text', placeholder: '', required: false, section: 'inventory' },
+    { id: 'stock_quantity', label: 'Stock Quantity', type: 'number', placeholder: '1', required: false, section: 'inventory' },
+    { id: 'backorder_status', label: 'Allow backorders?', type: 'select', placeholder: 'Select backorder status', required: false, section: 'inventory' },
+    { id: 'low_stock_threshold', label: 'Low stock threshold', type: 'text', placeholder: 'Store-wide threshold (2)', required: false, section: 'inventory' },
+    { id: 'sold_individually', label: 'Limit purchases to 1 item per order', type: 'select', placeholder: '', required: false, section: 'inventory' },
     
     // Categories & Tags Section
     { id: 'categories', label: 'Categories', type: 'multiselect', placeholder: 'Select categories', required: false, section: 'taxonomy' },
     { id: 'tags', label: 'Tags', type: 'multiselect', placeholder: 'Select tags', required: false, section: 'taxonomy' },
+    { id: 'brands', label: 'Brands', type: 'multiselect', placeholder: 'Select brands', required: false, section: 'taxonomy' },
     
     // Images Section
     { id: 'main_image', label: 'Main Image', type: 'image', placeholder: 'Image URL or path', required: false, section: 'images' },
@@ -397,37 +688,89 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
   // Add variable product fields
   if (productType === 'variable') {
     targetFields.push(
-      { id: 'attributes', label: 'Attributes', type: 'multiselect', placeholder: 'Select attributes', required: true, section: 'variations' },
       { id: 'variation_sku', label: 'Variation SKU', type: 'text', placeholder: 'Variation SKU pattern', required: false, section: 'variations' },
       { id: 'variation_price', label: 'Variation Price', type: 'number', placeholder: 'Variation price', required: false, section: 'variations' },
     );
   }
 
-  const updateSourceFields = (rowIndex: number) => {
-    const newFields = generateSampleData(rowIndex);
-    setCurrentRow(rowIndex);
-    // Preserve mapping status
-    return newFields.map(field => ({
-      ...field,
-      isMapped: mappings.some(m => m.sourceFieldId === field.name)
-    }));
-  };
 
   const handleDrop = (sourceField: SourceField, targetField: TargetField) => {
-    // Remove existing mapping for this target field
-    const newMappings = mappings.filter(m => m.targetFieldId !== targetField.id);
-    
-    // Add new mapping
-    newMappings.push({
-      sourceFieldId: sourceField.name,
-      targetFieldId: targetField.id
+    // Use functional setState to ensure we always work with the latest state
+    setMappings((prevMappings) => {
+      const currentMappings = prevMappings || [];
+      
+      const existingMapping = currentMappings.find(m => m.targetFieldId === targetField.id);
+      
+      // Remove existing mapping for this target field
+      const newMappings = currentMappings.filter(m => m.targetFieldId !== targetField.id);
+      
+      // Add new mapping with unique ID while keeping manual value if user entered one
+      const token = `{${sourceField.name}}`;
+      const prevManual = (existingMapping?.manualValue || '').trim();
+      const nextManual = prevManual
+        ? `${prevManual}${prevManual.endsWith(' ') ? '' : ' '}${token}`
+        : token;
+      const newMapping: Mapping = {
+        id: existingMapping?.id || `mapping_${Date.now()}_${Math.random()}`,
+        sourceFieldId: token,
+        targetFieldId: targetField.id,
+        manualValue: nextManual
+      };
+      
+      newMappings.push(newMapping);
+      
+      return newMappings;
     });
     
-    setMappings(newMappings);
   };
 
   const handleRemoveMapping = (targetFieldId: string) => {
-    setMappings(mappings.filter(m => m.targetFieldId !== targetFieldId));
+    setMappings((prevMappings) => (prevMappings || []).filter(m => m.targetFieldId !== targetFieldId));
+  };
+
+  const handleManualValueChange = (targetFieldId: string, value: string) => {
+    setMappings((prevMappings) => {
+      const currentMappings = prevMappings || [];
+      const existingIndex = currentMappings.findIndex((m) => m.targetFieldId === targetFieldId);
+
+      // If field already has mapping entry
+      if (existingIndex !== -1) {
+        const existingMapping = currentMappings[existingIndex];
+        const updatedMapping = { ...existingMapping, manualValue: value };
+
+        // If manual value cleared and there is no source field mapped, remove entry
+        if (!value && !updatedMapping.sourceFieldId) {
+          const result = currentMappings.filter((_, idx) => idx !== existingIndex);
+          return result;
+        }
+
+        const updatedMappings = [...currentMappings];
+        updatedMappings[existingIndex] = updatedMapping;
+        return updatedMappings;
+      }
+
+      // No mapping entry yet – create one only if user entered value
+      if (!value) {
+        return currentMappings;
+      }
+
+      const result = [
+        ...currentMappings,
+        {
+          id: `manual_${targetFieldId}_${Date.now()}`,
+          targetFieldId,
+          manualValue: value,
+          sourceFieldId: null,
+        },
+      ];
+      return result;
+    });
+  };
+
+  const handleNext = () => {
+    if (!requiredFieldsMapped) {
+    }
+    onNext();
   };
 
   const moveAttribute = (dragIndex: number, hoverIndex: number) => {
@@ -464,20 +807,75 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
     ]);
   };
 
+  const normalizeFieldName = (value?: string | null) => (value || '').trim().toLowerCase();
+
+  const getMappingForTargetField = (targetFieldId: string): Mapping | undefined => {
+    return (propMappings || []).find(m => m.targetFieldId === targetFieldId);
+  };
+
   const getMappedSourceField = (targetFieldId: string): SourceField | undefined => {
-    const mapping = mappings.find(m => m.targetFieldId === targetFieldId);
-    if (!mapping) return undefined;
+    const mapping = getMappingForTargetField(targetFieldId);
+    if (!mapping || !mapping.sourceFieldId) return undefined;
     
-    return sourceFields.find(f => f.name === mapping.sourceFieldId);
+    return sourceFields.find(f => normalizeFieldName(f.name) === normalizeFieldName(mapping.sourceFieldId));
+  };
+
+  const getManualValue = (targetFieldId: string) => {
+    return getMappingForTargetField(targetFieldId)?.manualValue || '';
   };
 
   const getFieldsBySection = (section: string) => {
     return targetFields.filter(f => f.section === section);
   };
 
-  const requiredFieldsMapped = targetFields
-    .filter(f => f.required)
-    .every(f => mappings.some(m => m.targetFieldId === f.id));
+  const currentMappings = propMappings || [];
+  const hasAnyMappings = currentMappings.length > 0;
+  
+  // Extract field names from tokens like {FieldName} and normalize them
+  const normalizedMappedSourceNames = new Set(
+    currentMappings
+      .map(m => {
+        const sourceId = m.sourceFieldId || '';
+        // Remove curly braces if present: {FieldName} -> FieldName
+        const cleanName = sourceId.replace(/^\{|\}$/g, '');
+        return normalizeFieldName(cleanName);
+      })
+      .filter(name => name !== '')
+  );
+  
+  // Check if a source field is mapped in regular mappings or attributes
+  const isSourceFieldMapped = (fieldName: string) => {
+    const normalizedName = normalizeFieldName(fieldName);
+    
+    // Check regular mappings
+    if (normalizedMappedSourceNames.has(normalizedName)) {
+      return true;
+    }
+    
+    // Check if used in attributes (name or values)
+    return attributes.some((attr: ProductAttribute) => {
+      // Check if attribute name matches the field name
+      if (normalizeFieldName(attr.name) === normalizedName) {
+        return true;
+      }
+      
+      // Check if attribute values contain {fieldName}
+      if (attr.values && attr.values.includes(`{${fieldName}}`)) {
+        return true;
+      }
+      
+      return false;
+    }) || categories.some((cat: any) => {
+      const name = typeof cat?.name === 'string' ? cat.name : '';
+      return name.includes(`{${fieldName}}`);
+    });
+  };
+
+  const requiredTargetFields = targetFields.filter((field) => field.required);
+  const missingRequiredTargetFields = requiredTargetFields.filter(
+    (field) => !currentMappings.some((m) => m.targetFieldId === field.id)
+  );
+  const requiredFieldsMapped = missingRequiredTargetFields.length === 0;
 
   return (
     <div className="p-8 bg-gray-50 h-screen flex flex-col">
@@ -488,8 +886,10 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
 
       {/* Product Type Selector */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
-        <label className="block text-sm text-gray-600 mb-2">Product Type</label>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-4">
+          <div>
+            <label className="block text-sm text-gray-600 mb-2">Product Type</label>
+            <div className="flex gap-2">
           <button
             onClick={() => setProductType('simple')}
             className={`px-4 py-2 rounded-lg border transition-colors ${
@@ -500,6 +900,8 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
           >
             Simple Product
           </button>
+          {isPro && (
+            <>
           <button
             onClick={() => setProductType('variable')}
             className={`px-4 py-2 rounded-lg border transition-colors ${
@@ -520,21 +922,74 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
           >
             Grouped Product
           </button>
-        </div>
-      </div>
+            </>
+          )}
+            </div>
+          </div>
 
-      {/* Validation Alert */}
-      {!requiredFieldsMapped && (
-        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-orange-600 mt-0.5" />
-          <div>
-            <h3 className="text-gray-900 mb-1">Required Fields Missing</h3>
-            <p className="text-sm text-gray-600">
-              Please map all required fields (marked with *) to continue to the next step.
-            </p>
+          <div className="ml-auto flex items-end gap-2">
+            <div>
+              <label className="block text-sm text-gray-600 mb-2">Use profile as template</label>
+              <select
+                value={selectedTemplateProfileId}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSelectedTemplateProfileId(v === '' ? '' : parseInt(v, 10));
+                }}
+                disabled={isLoadingTemplateProfiles || !!isApplyingTemplate}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white min-w-[260px]"
+              >
+                <option value="">Select profile...</option>
+                {templateProfiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              {templateProfilesError && (
+                <div className="mt-1 text-[11px] text-red-600 max-w-[320px] break-words">
+                  {templateProfilesError}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={async () => {
+                if (!onApplyTemplateProfile) return;
+                if (selectedTemplateProfileId === '' || !Number.isFinite(selectedTemplateProfileId)) {
+                  alert('Please select a profile');
+                  return;
+                }
+                const ok = confirm('Apply selected profile as template? This will overwrite current field mapping settings.');
+                if (!ok) return;
+                await onApplyTemplateProfile(Number(selectedTemplateProfileId));
+              }}
+              disabled={!onApplyTemplateProfile || selectedTemplateProfileId === '' || !!isApplyingTemplate}
+              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            >
+              {isApplyingTemplate ? 'Applying…' : 'Apply'}
+            </button>
+
+            <button
+              onClick={() => {
+                if (!onUndoTemplateApply) return;
+                onUndoTemplateApply();
+              }}
+              disabled={!onUndoTemplateApply || !canUndoTemplateApply || !!isApplyingTemplate}
+              className="px-4 py-2 border border-red-500 text-red-600 bg-white rounded-lg hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            >
+              Undo
+            </button>
           </div>
         </div>
-      )}
+
+        {templateAppliedProfileName && (
+          <div className="mt-3 text-xs text-gray-600">
+            Template applied: {templateAppliedProfileName}
+          </div>
+        )}
+      </div>
+
 
       {/* Main Layout: 1/4 + 3/4 */}
       <div className="flex gap-6 flex-1 overflow-hidden">
@@ -548,20 +1003,26 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
               <button
                 onClick={() => {
                   if (currentRow > 0) {
-                    updateSourceFields(currentRow - 1);
+                    setCurrentRow(currentRow - 1);
                   }
                 }}
                 disabled={currentRow === 0}
-                className="p-1 hover:bg-gray-200 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                className="p-1 hover:bg-gray-100 rounded disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ChevronLeft className="w-5 h-5 text-gray-700" />
               </button>
               <span className="text-sm text-gray-900">
-                Column {currentRow + 1}
+                Row {currentRow + 1}
               </span>
               <button
-                onClick={() => updateSourceFields(currentRow + 1)}
-                className="p-1 hover:bg-gray-200 rounded"
+                onClick={() => {
+                  const maxRow = previewData?.rows?.length || 5;
+                  if (currentRow < maxRow - 1) {
+                    setCurrentRow(currentRow + 1);
+                  }
+                }}
+                disabled={currentRow >= ((previewData?.rows?.length || 5) - 1)}
+                className="p-1 hover:bg-gray-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ChevronRight className="w-5 h-5 text-gray-700" />
               </button>
@@ -582,7 +1043,7 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                   <SourceFieldItem
                     key={field.id}
                     field={field}
-                    isMapped={mappings.some(m => m.sourceFieldId === field.name)}
+                    isMapped={isSourceFieldMapped(field.name)}
                   />
                 ))}
               </tbody>
@@ -617,34 +1078,38 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                   <DropZoneField
                     field={targetFields.find(f => f.id === 'title')!}
                     mappedSourceField={getMappedSourceField('title')}
+                    manualValue={getManualValue('title')}
                     onDrop={handleDrop}
                     onRemove={handleRemoveMapping}
+                    onManualChange={handleManualValueChange}
                   />
                 </div>
 
                 {/* Description Editor */}
                 <div className="mb-6">
-                  <label className="block text-sm text-gray-600 mb-2">Описание товара</label>
+                  <label className="block text-sm text-gray-600 mb-2">Product Description</label>
                   <div className="border-2 border-gray-300 rounded-lg">
                     {/* Editor Toolbar Simulation */}
                     <div className="bg-gray-50 border-b border-gray-300 px-3 py-2 flex items-center gap-2">
                       <button className="text-xs px-2 py-1 bg-white border border-gray-300 rounded hover:bg-gray-100">
-                        Добавить медиафайл
+                        Add Media
                       </button>
                       <button className="text-xs px-2 py-1 bg-white border border-gray-300 rounded hover:bg-gray-100">
-                        Добавить форму
+                        Add Form
                       </button>
                       <div className="flex-1"></div>
                       <select className="text-xs px-2 py-1 border border-gray-300 rounded">
-                        <option>Абзац</option>
+                        <option>Paragraph</option>
                       </select>
                     </div>
                     <div className="p-3">
                       <DropZoneField
                         field={targetFields.find(f => f.id === 'description')!}
                         mappedSourceField={getMappedSourceField('description')}
+                        manualValue={getManualValue('description')}
                         onDrop={handleDrop}
                         onRemove={handleRemoveMapping}
+                        onManualChange={handleManualValueChange}
                       />
                     </div>
                   </div>
@@ -652,22 +1117,24 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
 
                 {/* Short Description Editor */}
                 <div className="mb-6">
-                  <label className="block text-sm text-gray-600 mb-2">Краткое описание товара</label>
+                  <label className="block text-sm text-gray-600 mb-2">Short Product Description</label>
                   <div className="border-2 border-gray-300 rounded-lg">
                     <div className="bg-gray-50 border-b border-gray-300 px-3 py-2 flex items-center gap-2">
                       <button className="text-xs px-2 py-1 bg-white border border-gray-300 rounded hover:bg-gray-100">
-                        Добавить медиафайл
+                        Add Media
                       </button>
                       <button className="text-xs px-2 py-1 bg-white border border-gray-300 rounded hover:bg-gray-100">
-                        Добавить форму
+                        Add Form
                       </button>
                     </div>
                     <div className="p-3">
                       <DropZoneField
                         field={targetFields.find(f => f.id === 'short_description')!}
                         mappedSourceField={getMappedSourceField('short_description')}
+                        manualValue={getManualValue('short_description')}
                         onDrop={handleDrop}
                         onRemove={handleRemoveMapping}
+                        onManualChange={handleManualValueChange}
                       />
                     </div>
                   </div>
@@ -677,14 +1144,14 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                 <div className="mb-6">
                   <div className="border-2 border-gray-300 rounded-lg">
                     <div className="bg-gray-100 px-4 py-3 border-b border-gray-300 flex items-center gap-4">
-                      <label className="text-sm text-gray-700">Данные товара —</label>
+                      <label className="text-sm text-gray-700">Product Data —</label>
                       <select 
                         value={productType}
                         onChange={(e) => setProductType(e.target.value as any)}
                         className="px-3 py-1 border border-gray-300 rounded text-sm"
                       >
-                        <option value="simple">Простой товар</option>
-                        <option value="variable">Вариативный товар</option>
+                        <option value="simple">Simple Product</option>
+                        <option value="variable">Variable Product</option>
                         <option value="grouped">Grouped product</option>
                       </select>
                       <button className="text-gray-500 hover:text-gray-700">
@@ -692,11 +1159,11 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                       </button>
                       <label className="flex items-center gap-2 text-sm text-gray-700 ml-4">
                         <input type="checkbox" className="w-4 h-4" />
-                        Виртуальный
+                        Virtual
                       </label>
                       <label className="flex items-center gap-2 text-sm text-gray-700">
                         <input type="checkbox" className="w-4 h-4" />
-                        Скачиваемый
+                        Downloadable
                       </label>
                     </div>
 
@@ -706,38 +1173,38 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                         className={`px-3 py-2 ${activeTab === 'general' ? 'bg-white border-t-2 border-red-500' : 'hover:bg-white'}`}
                         onClick={() => setActiveTab('general')}
                       >
-                        Основные
+                        General
                       </button>
                       <button
                         className={`px-3 py-2 ${activeTab === 'inventory' ? 'bg-white border-t-2 border-red-500' : 'hover:bg-white'}`}
                         onClick={() => setActiveTab('inventory')}
                       >
-                        Запасы
+                        Inventory
                       </button>
                       <button
                         className={`px-3 py-2 ${activeTab === 'shipping' ? 'bg-white border-t-2 border-red-500' : 'hover:bg-white'}`}
                         onClick={() => setActiveTab('shipping')}
                       >
-                        Доставка
+                        Shipping
                       </button>
                       <button
                         className={`px-3 py-2 ${activeTab === 'linked' ? 'bg-white border-t-2 border-red-500' : 'hover:bg-white'}`}
                         onClick={() => setActiveTab('linked')}
                       >
-                        Сопутствующие
+                        Linked Products
                       </button>
                       <button
                         className={`px-3 py-2 ${activeTab === 'attributes' ? 'bg-white border-t-2 border-red-500' : 'hover:bg-white'}`}
                         onClick={() => setActiveTab('attributes')}
                       >
-                        Атрибуты
+                        Attributes
                       </button>
                       {productType === 'variable' && (
                         <button
                           className={`px-3 py-2 ${activeTab === 'variations' ? 'bg-white border-t-2 border-red-500' : 'hover:bg-white'}`}
                           onClick={() => setActiveTab('variations')}
                         >
-                          Вариации
+                          Variations
                         </button>
                       )}
                       {productType === 'grouped' && (
@@ -745,7 +1212,7 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                           className={`px-3 py-2 ${activeTab === 'grouped' ? 'bg-white border-t-2 border-red-500' : 'hover:bg-white'}`}
                           onClick={() => setActiveTab('grouped')}
                         >
-                          Модели
+                          Models
                         </button>
                       )}
                     </div>
@@ -758,23 +1225,27 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                             <DropZoneField
                               field={targetFields.find(f => f.id === 'regular_price')!}
                               mappedSourceField={getMappedSourceField('regular_price')}
+                              manualValue={getManualValue('regular_price')}
                               onDrop={handleDrop}
                               onRemove={handleRemoveMapping}
+                              onManualChange={handleManualValueChange}
                             />
                             <DropZoneField
                               field={targetFields.find(f => f.id === 'sale_price')!}
                               mappedSourceField={getMappedSourceField('sale_price')}
+                              manualValue={getManualValue('sale_price')}
                               onDrop={handleDrop}
                               onRemove={handleRemoveMapping}
+                              onManualChange={handleManualValueChange}
                             />
                           </div>
 
                           {/* Sale Dates */}
                           <div>
-                            <label className="block text-sm text-gray-600 mb-2">Даты акции</label>
+                            <label className="block text-sm text-gray-600 mb-2">Sale Dates</label>
                             <div className="grid grid-cols-2 gap-4">
                               <div className="border-2 border-gray-300 rounded-lg p-3">
-                                <label className="block text-sm text-gray-600 mb-1">С...</label>
+                                <label className="block text-sm text-gray-600 mb-1">From...</label>
                                 <input 
                                   type="text" 
                                   placeholder="YYYY-MM-DD" 
@@ -782,7 +1253,7 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                                 />
                               </div>
                               <div className="border-2 border-gray-300 rounded-lg p-3">
-                                <label className="block text-sm text-gray-600 mb-1">По...</label>
+                                <label className="block text-sm text-gray-600 mb-1">To...</label>
                                 <input 
                                   type="text" 
                                   placeholder="YYYY-MM-DD" 
@@ -790,7 +1261,7 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                                 />
                               </div>
                             </div>
-                            <button className="text-xs text-blue-600 hover:underline mt-2">Отмена</button>
+                            <button className="text-xs text-blue-600 hover:underline mt-2">Cancel</button>
                           </div>
                         </>
                       )}
@@ -802,8 +1273,10 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                             <DropZoneField
                               field={targetFields.find(f => f.id === 'sku')!}
                               mappedSourceField={getMappedSourceField('sku')}
+                              manualValue={getManualValue('sku')}
                               onDrop={handleDrop}
                               onRemove={handleRemoveMapping}
+                              onManualChange={handleManualValueChange}
                             />
                           </div>
 
@@ -812,8 +1285,10 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                             <DropZoneField
                               field={targetFields.find(f => f.id === 'gtin_upc_ean')!}
                               mappedSourceField={getMappedSourceField('gtin_upc_ean')}
+                              manualValue={getManualValue('gtin_upc_ean')}
                               onDrop={handleDrop}
                               onRemove={handleRemoveMapping}
+                              onManualChange={handleManualValueChange}
                             />
                           </div>
 
@@ -821,7 +1296,7 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                           <div className="flex items-center gap-2 py-2">
                             <input type="checkbox" id="track_stock" className="w-4 h-4" defaultChecked />
                             <label htmlFor="track_stock" className="text-sm text-gray-700">
-                              Отслеживание количества товара на складе для данного товара
+                              Track stock quantity for this product
                             </label>
                             <button className="text-gray-500 hover:text-gray-700">
                               <span className="text-sm">ⓘ</span>
@@ -833,15 +1308,17 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                             <DropZoneField
                               field={targetFields.find(f => f.id === 'stock_quantity')!}
                               mappedSourceField={getMappedSourceField('stock_quantity')}
+                              manualValue={getManualValue('stock_quantity')}
                               onDrop={handleDrop}
                               onRemove={handleRemoveMapping}
+                              onManualChange={handleManualValueChange}
                             />
                           </div>
 
                           {/* Backorder Status */}
                           <div>
                             <label className="block text-sm text-gray-600 mb-2">
-                              Разрешить предзаказы?
+                              Allow backorders?
                               <button className="ml-2 text-gray-500 hover:text-gray-700 inline">
                                 <span className="text-sm">ⓘ</span>
                               </button>
@@ -849,15 +1326,15 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                             <div className="space-y-2">
                               <label className="flex items-center gap-2">
                                 <input type="radio" name="backorders" value="no" defaultChecked className="w-4 h-4" />
-                                <span className="text-sm text-gray-700">Не разрешать</span>
+                                <span className="text-sm text-gray-700">Do not allow</span>
                               </label>
                               <label className="flex items-center gap-2">
                                 <input type="radio" name="backorders" value="notify" className="w-4 h-4" />
-                                <span className="text-sm text-gray-700">Разрешать, но уведомить клиента</span>
+                                <span className="text-sm text-gray-700">Allow, but notify customer</span>
                               </label>
                               <label className="flex items-center gap-2">
                                 <input type="radio" name="backorders" value="yes" className="w-4 h-4" />
-                                <span className="text-sm text-gray-700">Разрешать</span>
+                                <span className="text-sm text-gray-700">Allow</span>
                               </label>
                             </div>
                           </div>
@@ -867,8 +1344,10 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                             <DropZoneField
                               field={targetFields.find(f => f.id === 'low_stock_threshold')!}
                               mappedSourceField={getMappedSourceField('low_stock_threshold')}
+                              manualValue={getManualValue('low_stock_threshold')}
                               onDrop={handleDrop}
                               onRemove={handleRemoveMapping}
+                              onManualChange={handleManualValueChange}
                             />
                           </div>
 
@@ -876,7 +1355,7 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                           <div className="flex items-center gap-2 py-2">
                             <input type="checkbox" id="sold_individually" className="w-4 h-4" />
                             <label htmlFor="sold_individually" className="text-sm text-gray-700">
-                              Ограничение покупок до 1 товара в заказе
+                              Limit purchases to 1 item per order
                             </label>
                             <button className="text-gray-500 hover:text-gray-700">
                               <span className="text-sm">ⓘ</span>
@@ -891,33 +1370,43 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                             <DropZoneField
                               field={targetFields.find(f => f.id === 'weight')!}
                               mappedSourceField={getMappedSourceField('weight')}
+                              manualValue={getManualValue('weight')}
                               onDrop={handleDrop}
                               onRemove={handleRemoveMapping}
+                              onManualChange={handleManualValueChange}
                             />
                             <DropZoneField
                               field={targetFields.find(f => f.id === 'length')!}
                               mappedSourceField={getMappedSourceField('length')}
+                              manualValue={getManualValue('length')}
                               onDrop={handleDrop}
                               onRemove={handleRemoveMapping}
+                              onManualChange={handleManualValueChange}
                             />
                             <DropZoneField
                               field={targetFields.find(f => f.id === 'width')!}
                               mappedSourceField={getMappedSourceField('width')}
+                              manualValue={getManualValue('width')}
                               onDrop={handleDrop}
                               onRemove={handleRemoveMapping}
+                              onManualChange={handleManualValueChange}
                             />
                             <DropZoneField
                               field={targetFields.find(f => f.id === 'height')!}
                               mappedSourceField={getMappedSourceField('height')}
+                              manualValue={getManualValue('height')}
                               onDrop={handleDrop}
                               onRemove={handleRemoveMapping}
+                              onManualChange={handleManualValueChange}
                             />
                           </div>
                           <DropZoneField
                             field={targetFields.find(f => f.id === 'shipping_class')!}
                             mappedSourceField={getMappedSourceField('shipping_class')}
+                            manualValue={getManualValue('shipping_class')}
                             onDrop={handleDrop}
                             onRemove={handleRemoveMapping}
+                            onManualChange={handleManualValueChange}
                           />
                         </div>
                       )}
@@ -928,17 +1417,19 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                           <div>
                             <div className="mb-2">
                               <label className="block text-sm text-gray-700 mb-1">
-                                Дополнительные товары (Upsells)
+                                Upsell Products
                               </label>
                               <p className="text-xs text-gray-500">
-                                Товары, которые будут показаны на странице товара как рекомендации
+                                Products shown on product page as recommendations
                               </p>
                             </div>
                             <DropZoneField
                               field={targetFields.find(f => f.id === 'upsells')!}
                               mappedSourceField={getMappedSourceField('upsells')}
+                              manualValue={getManualValue('upsells')}
                               onDrop={handleDrop}
                               onRemove={handleRemoveMapping}
+                              onManualChange={handleManualValueChange}
                             />
                           </div>
 
@@ -946,17 +1437,19 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                           <div>
                             <div className="mb-2">
                               <label className="block text-sm text-gray-700 mb-1">
-                                Перекрестные продажи (Cross-sells)
+                                Cross-sell Products
                               </label>
                               <p className="text-xs text-gray-500">
-                                Товары, которые будут показаны в корзине как дополнительные покупки
+                                Products shown in cart as additional purchases
                               </p>
                             </div>
                             <DropZoneField
                               field={targetFields.find(f => f.id === 'cross_sells')!}
                               mappedSourceField={getMappedSourceField('cross_sells')}
+                              manualValue={getManualValue('cross_sells')}
                               onDrop={handleDrop}
                               onRemove={handleRemoveMapping}
+                              onManualChange={handleManualValueChange}
                             />
                           </div>
 
@@ -964,17 +1457,19 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                           <div>
                             <div className="mb-2">
                               <label className="block text-sm text-gray-700 mb-1">
-                                Сгруппированные товары (Grouped Products)
+                                Grouped Products
                               </label>
                               <p className="text-xs text-gray-500">
-                                ID родительского товара для группировки (только для grouped products)
+                                Parent product ID for grouping (only for grouped products)
                               </p>
                             </div>
                             <DropZoneField
                               field={targetFields.find(f => f.id === 'grouped_products')!}
                               mappedSourceField={getMappedSourceField('grouped_products')}
+                              manualValue={getManualValue('grouped_products')}
                               onDrop={handleDrop}
                               onRemove={handleRemoveMapping}
+                              onManualChange={handleManualValueChange}
                             />
                           </div>
 
@@ -983,12 +1478,12 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                             <div className="flex items-start gap-2">
                               <HelpCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
                               <div className="text-sm text-gray-700">
-                                <p className="mb-2"><strong>Рекомендации:</strong></p>
+                                <p className="mb-2"><strong>Recommendations:</strong></p>
                                 <ul className="text-xs text-gray-600 space-y-1 ml-4 list-disc">
-                                  <li><strong>Upsells</strong> — более дорогие или улучшенные версии текущего товара</li>
-                                  <li><strong>Cross-sells</strong> — сопутствующие товары (например, батарейки к фонарику)</li>
-                                  <li><strong>Grouped</strong> — для объединения нескольких товаров в один набор</li>
-                                  <li>ID товаров должны существовать в вашем магазине (разделяйте через запятую)</li>
+                                  <li><strong>Upsells</strong> — more expensive or improved versions of current product</li>
+                                  <li><strong>Cross-sells</strong> — related products (e.g., batteries for flashlight)</li>
+                                  <li><strong>Grouped</strong> — to combine multiple products into one set</li>
+                                  <li>Product IDs must exist in your store (separate with commas)</li>
                                 </ul>
                               </div>
                             </div>
@@ -1016,12 +1511,10 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                               
                               {/* Checkboxes Space */}
                               <div className="flex items-center gap-4 text-xs">
-                                {productType === 'variable' && (
-                                  <div className="w-[100px]"></div>
-                                )}
                                 <div className="w-[80px]"></div>
-                                <div className="w-[90px]"></div>
-                                <div className="w-[130px]"></div>
+                                <div className="w-[65px]"></div>
+                                <div className="w-[80px]"></div>
+                                <div className="w-[100px]"></div>
                               </div>
                               
                               {/* Remove Button Space */}
@@ -1059,8 +1552,10 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                           setVariationModel={setVariationModel}
                           DropZoneField={DropZoneField}
                           getMappedSourceField={getMappedSourceField}
+                          getManualValue={getManualValue}
                           handleDrop={handleDrop}
                           handleRemoveMapping={handleRemoveMapping}
+                          handleManualValueChange={handleManualValueChange}
                         />
                       )}
 
@@ -1070,8 +1565,10 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                           setGroupedModel={setGroupedModel}
                           DropZoneField={DropZoneField}
                           getMappedSourceField={getMappedSourceField}
+                          getManualValue={getManualValue}
                           handleDrop={handleDrop}
                           handleRemoveMapping={handleRemoveMapping}
+                          handleManualValueChange={handleManualValueChange}
                         />
                       )}
 
@@ -1079,7 +1576,7 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                         <div className="space-y-6">
                           {/* Model Selection */}
                           <div>
-                            <h3 className="text-sm text-gray-900 mb-3">Выберите модель вариативного товара</h3>
+                            <h3 className="text-sm text-gray-900 mb-3">Select variable product model</h3>
                             <div className="grid grid-cols-2 gap-3">
                               {/* Model 1: Classic */}
                               <button
@@ -1093,17 +1590,17 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                                 <div className="flex items-start gap-2 mb-2">
                                   <Check className={`w-5 h-5 mt-0.5 ${variationModel === 'classic' ? 'text-red-500' : 'text-gray-300'}`} />
                                   <div className="flex-1">
-                                    <h4 className="text-sm text-gray-900 mb-1">1. Классическая модель</h4>
+                                    <h4 className="text-sm text-gray-900 mb-1">1. Classic Model</h4>
                                     <span className="inline-block px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
-                                      РЕКОМЕНДУЕМАЯ
+                                      RECOMMENDED
                                     </span>
                                   </div>
                                 </div>
                                 <ul className="text-xs text-gray-600 space-y-1 ml-7">
-                                  <li>✅ Родительский SKU</li>
-                                  <li>✅ SKU вариаций</li>
-                                  <li>✅ Атрибуты на уровне родителя</li>
-                                  <li>✅ Фото вариации — опционально</li>
+                                  <li>✅ Parent SKU</li>
+                                  <li>✅ Variation SKUs</li>
+                                  <li>✅ Attributes at parent level</li>
+                                  <li>✅ Variation images optional</li>
                                 </ul>
                               </button>
 
@@ -1119,17 +1616,17 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                                 <div className="flex items-start gap-2 mb-2">
                                   <Check className={`w-5 h-5 mt-0.5 ${variationModel === 'no-parent-sku' ? 'text-red-500' : 'text-gray-300'}`} />
                                   <div className="flex-1">
-                                    <h4 className="text-sm text-gray-900 mb-1">2. Без SKU родителя</h4>
+                                    <h4 className="text-sm text-gray-900 mb-1">2. No Parent SKU</h4>
                                     <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">
-                                      Идентификация по названию
+                                      Identification by name
                                     </span>
                                   </div>
                                 </div>
                                 <ul className="text-xs text-gray-600 space-y-1 ml-7">
-                                  <li>❌ Родительский SKU отсутствует</li>
-                                  <li>✅ SKU вариаций</li>
-                                  <li>✅ Связь по названию товара</li>
-                                  <li>✅ Фото вариации — опционально</li>
+                                  <li>❌ Parent SKU absent</li>
+                                  <li>✅ Variation SKUs</li>
+                                  <li>✅ Linked by product name</li>
+                                  <li>✅ Variation images optional</li>
                                 </ul>
                               </button>
 
@@ -1145,17 +1642,17 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                                 <div className="flex items-start gap-2 mb-2">
                                   <Check className={`w-5 h-5 mt-0.5 ${variationModel === 'auto-sku' ? 'text-red-500' : 'text-gray-300'}`} />
                                   <div className="flex-1">
-                                    <h4 className="text-sm text-gray-900 mb-1">3. Автогенерация SKU</h4>
+                                    <h4 className="text-sm text-gray-900 mb-1">3. Auto-generate SKU</h4>
                                     <span className="inline-block px-2 py-0.5 bg-red-50 text-red-600 text-xs rounded border border-red-200">
-                                      SKU создаётся автоматически
+                                      SKU created automatically
                                     </span>
                                   </div>
                                 </div>
                                 <ul className="text-xs text-gray-600 space-y-1 ml-7">
-                                  <li>✅ Родительский SKU</li>
-                                  <li>🔄 SKU вариаций генерируется</li>
-                                  <li>✅ Формула: PARENT-ATTR1-ATTR2</li>
-                                  <li>✅ Фото вариации — опционально</li>
+                                  <li>✅ Parent SKU</li>
+                                  <li>🔄 Variation SKU generated</li>
+                                  <li>✅ Formula: PARENT-ATTR1-ATTR2</li>
+                                  <li>✅ Variation images optional</li>
                                 </ul>
                               </button>
 
@@ -1171,17 +1668,17 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                                 <div className="flex items-start gap-2 mb-2">
                                   <Check className={`w-5 h-5 mt-0.5 ${variationModel === 'shared-price' ? 'text-red-500' : 'text-gray-300'}`} />
                                   <div className="flex-1">
-                                    <h4 className="text-sm text-gray-900 mb-1">4. Общая цена</h4>
+                                    <h4 className="text-sm text-gray-900 mb-1">4. Shared Price</h4>
                                     <span className="inline-block px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded">
-                                      Цена на уровне родителя
+                                      Price at parent level
                                     </span>
                                   </div>
                                 </div>
                                 <ul className="text-xs text-gray-600 space-y-1 ml-7">
-                                  <li>✅ Родительский SKU</li>
-                                  <li>✅ SKU вариаций</li>
-                                  <li>💰 Цена только у родителя</li>
-                                  <li>✅ Фото вариации — опционально</li>
+                                  <li>✅ Parent SKU</li>
+                                  <li>✅ Variation SKUs</li>
+                                  <li>💰 Price only at parent</li>
+                                  <li>✅ Variation images optional</li>
                                 </ul>
                               </button>
                             </div>
@@ -1191,15 +1688,15 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                           <div className="bg-gray-50 border border-gray-300 rounded-lg p-4">
                             {variationModel === 'classic' && (
                               <div>
-                                <h4 className="text-sm text-gray-900 mb-3">Модель 1: Классическая (Рекомендуемая)</h4>
+                                <h4 className="text-sm text-gray-900 mb-3">Model 1: Classic (Recommended)</h4>
                                 <p className="text-xs text-gray-600 mb-4">
-                                  Эталонная модель для импорта. Полная совместимость с ERP, складом, API. Лучшая модель для масштабных каталогов.
+                                  Reference model for import. Full compatibility with ERP, warehouse, API. Best model for large catalogs.
                                 </p>
                                 
                                 {/* Example Table */}
                                 <div className="bg-white border border-gray-300 rounded overflow-hidden">
                                   <div className="bg-gray-100 px-3 py-2 border-b border-gray-300">
-                                    <h5 className="text-xs text-gray-700">Пример структуры данных:</h5>
+                                    <h5 className="text-xs text-gray-700">Example data structure:</h5>
                                   </div>
                                   <div className="overflow-x-auto">
                                     <table className="w-full text-xs">
@@ -1245,14 +1742,14 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
 
                             {variationModel === 'no-parent-sku' && (
                               <div>
-                                <h4 className="text-sm text-gray-900 mb-3">Модель 2: Без SKU родителя</h4>
+                                <h4 className="text-sm text-gray-900 mb-3">Model 2: No Parent SKU</h4>
                                 <p className="text-xs text-gray-600 mb-4">
-                                  Часто используется у поставщиков. Подходит для импорта без артикула родителя. Требует строгой уникальности имени товара.
+                                  Often used by suppliers. Suitable for import without parent SKU. Requires strict product name uniqueness.
                                 </p>
                                 
                                 <div className="bg-white border border-gray-300 rounded overflow-hidden">
                                   <div className="bg-gray-100 px-3 py-2 border-b border-gray-300">
-                                    <h5 className="text-xs text-gray-700">Пример структуры данных:</h5>
+                                    <h5 className="text-xs text-gray-700">Example data structure:</h5>
                                   </div>
                                   <div className="overflow-x-auto">
                                     <table className="w-full text-xs">
@@ -1298,25 +1795,25 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
 
                             {variationModel === 'auto-sku' && (
                               <div>
-                                <h4 className="text-sm text-gray-900 mb-3">Модель 3: Автогенерация SKU вариаций</h4>
+                                <h4 className="text-sm text-gray-900 mb-3">Model 3: Auto-generate Variation SKU</h4>
                                 <p className="text-xs text-gray-600 mb-4">
-                                  Допустимая модель с автоматической генерацией SKU. Обязательна строгая проверка уникальности SKU. Удобна при импорте из упрощённых CSV.
+                                  Variation SKU generated automatically based on attributes. Convenient for quick import.
                                 </p>
-
+                                
                                 {/* Formula */}
                                 <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4">
-                                  <h5 className="text-xs text-blue-900 mb-2">Формула автогенерации SKU:</h5>
+                                  <h5 className="text-xs text-blue-900 mb-2">Formula for auto-generating SKU:</h5>
                                   <code className="text-xs text-blue-800">
                                     PARENT_SKU + "-" + Attribute_Abbreviations
                                   </code>
                                   <div className="mt-2 text-xs text-blue-700">
-                                    Пример: <strong>TSHIRT-01-R-XL</strong> (где R = Red, XL = XL)
+                                    Example: <strong>TSHIRT-01-R-XL</strong> (where R = Red, XL = XL)
                                   </div>
                                 </div>
                                 
                                 <div className="bg-white border border-gray-300 rounded overflow-hidden">
                                   <div className="bg-gray-100 px-3 py-2 border-b border-gray-300">
-                                    <h5 className="text-xs text-gray-700">Пример структуры данных:</h5>
+                                    <h5 className="text-xs text-gray-700">Example data structure:</h5>
                                   </div>
                                   <div className="overflow-x-auto">
                                     <table className="w-full text-xs">
@@ -1362,14 +1859,14 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
 
                             {variationModel === 'shared-price' && (
                               <div>
-                                <h4 className="text-sm text-gray-900 mb-3">Модель 4: Общая цена на уровне родителя</h4>
+                                <h4 className="text-sm text-gray-900 mb-3">Model 4: Shared Price at Parent Level</h4>
                                 <p className="text-xs text-gray-600 mb-4">
-                                  Удобна для fashion-каталогов. Упрощает ценообразование. Требует жёсткого наследования цены от родительского товара.
+                                  Convenient for fashion catalogs. Price inherited from parent product.
                                 </p>
                                 
                                 <div className="bg-white border border-gray-300 rounded overflow-hidden">
                                   <div className="bg-gray-100 px-3 py-2 border-b border-gray-300">
-                                    <h5 className="text-xs text-gray-700">Пример структуры данных:</h5>
+                                    <h5 className="text-xs text-gray-700">Example data structure:</h5>
                                   </div>
                                   <div className="overflow-x-auto">
                                     <table className="w-full text-xs">
@@ -1418,16 +1915,16 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                             <h4 className="text-sm text-gray-900 mb-2 flex items-center gap-2">
                               <AlertCircle className="w-4 h-4 text-yellow-600" />
-                              Обязательные правила для всех моделей
+                              Required rules for all models
                             </h4>
                             <ul className="text-xs text-gray-700 space-y-1 ml-6">
-                              <li>✅ Проверка уникальности комбинаций атрибутов</li>
-                              <li>✅ Проверка уникальности SKU (включая автогенерацию)</li>
-                              <li>✅ Поддержка фото на уровне родителя и вариации</li>
-                              <li>✅ Свой остаток у каждой вариации</li>
-                              <li>✅ Валидация наличия обязательных атрибутов</li>
-                              <li>✅ Валидация конфликтов по имени и SKU</li>
-                              <li>✅ Проверка дублей вариаций</li>
+                              <li>✅ Attribute combination uniqueness check</li>
+                              <li>✅ SKU uniqueness check (including auto-generation)</li>
+                              <li>✅ Support for images at parent and variation level</li>
+                              <li>✅ Individual stock for each variation</li>
+                              <li>✅ Validation of required attributes</li>
+                              <li>✅ Validation of name and SKU conflicts</li>
+                              <li>✅ Duplicate variation check</li>
                             </ul>
                           </div>
                         </div>
@@ -1442,7 +1939,7 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                 {/* Publish Box */}
                 <div className="border-2 border-gray-300 rounded-lg">
                   <div className="bg-gray-100 px-4 py-2 border-b border-gray-300">
-                    <h3 className="text-sm text-gray-900">Опубликовать</h3>
+                    <h3 className="text-sm text-gray-900">Publish</h3>
                   </div>
                   <div className="p-4 space-y-4">
                     {/* Post Status */}
@@ -1471,17 +1968,6 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                           />
                           <span className="text-xs text-gray-900">Draft</span>
                         </label>
-                        <label className="flex items-center gap-2 opacity-50">
-                          <input
-                            type="radio"
-                            name="postStatus"
-                            value="xpath"
-                            disabled
-                            className="w-3.5 h-3.5"
-                          />
-                          <span className="text-xs text-gray-900">Set with XPath</span>
-                          <span className="text-[10px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded border border-red-200">PRO</span>
-                        </label>
                       </div>
                     </div>
 
@@ -1489,7 +1975,7 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                     <div>
                       <h4 className="text-xs text-gray-600 mb-2 flex items-center gap-1">
                         Post Dates
-                        <button className="text-gray-400 hover:text-gray-600" title="Справка">
+                        <button className="text-gray-400 hover:text-gray-600" title="Help">
                           <HelpCircle className="w-3 h-3" />
                         </button>
                       </h4>
@@ -1528,7 +2014,7 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                               className="w-3.5 h-3.5"
                             />
                             <span className="text-xs text-gray-900">Random dates</span>
-                            <button className="text-gray-400 hover:text-gray-600" title="Справка">
+                            <button className="text-gray-400 hover:text-gray-600" title="Help">
                               <HelpCircle className="w-3 h-3" />
                             </button>
                           </label>
@@ -1558,7 +2044,7 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                 {/* Categories */}
                 <div className="border-2 border-gray-300 rounded-lg">
                   <div className="bg-gray-100 px-4 py-2 border-b border-gray-300 flex items-center justify-between">
-                    <h3 className="text-sm text-gray-900">Категории товаров</h3>
+                    <h3 className="text-sm text-gray-900">Product Categories</h3>
                     <button className="text-xs text-gray-600 hover:text-gray-900">▼</button>
                   </div>
                   <div className="p-4">
@@ -1572,61 +2058,72 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
                 {/* Tags */}
                 <div className="border-2 border-gray-300 rounded-lg">
                   <div className="bg-gray-100 px-4 py-2 border-b border-gray-300 flex items-center justify-between">
-                    <h3 className="text-sm text-gray-900">Метки товаров</h3>
+                    <h3 className="text-sm text-gray-900">Product Tags</h3>
                     <button className="text-xs text-gray-600 hover:text-gray-900">▼</button>
                   </div>
                   <div className="p-4">
                     <DropZoneField
                       field={targetFields.find(f => f.id === 'tags')!}
                       mappedSourceField={getMappedSourceField('tags')}
+                      manualValue={getManualValue('tags')}
                       onDrop={handleDrop}
                       onRemove={handleRemoveMapping}
+                      onManualChange={handleManualValueChange}
                     />
                   </div>
                 </div>
 
                 {/* Product Image */}
-                <div className="border-2 border-gray-300 rounded-lg">
+                <div className="border-2 border-gray-300 rounded-lg overflow-hidden">
                   <div className="bg-gray-100 px-4 py-2 border-b border-gray-300 flex items-center justify-between">
-                    <h3 className="text-sm text-gray-900">Изображение товара</h3>
+                    <h3 className="text-sm text-gray-900">Product Image</h3>
                     <button className="text-xs text-gray-600 hover:text-gray-900">▼</button>
                   </div>
                   <div className="p-4">
                     <DropZoneField
                       field={targetFields.find(f => f.id === 'main_image')!}
                       mappedSourceField={getMappedSourceField('main_image')}
+                      manualValue={getManualValue('main_image')}
                       onDrop={handleDrop}
                       onRemove={handleRemoveMapping}
+                      onManualChange={handleManualValueChange}
                     />
                   </div>
                 </div>
 
                 {/* Gallery */}
-                <div className="border-2 border-gray-300 rounded-lg">
+                <div className="border-2 border-gray-300 rounded-lg overflow-hidden">
                   <div className="bg-gray-100 px-4 py-2 border-b border-gray-300 flex items-center justify-between">
-                    <h3 className="text-sm text-gray-900">Галерея товара</h3>
+                    <h3 className="text-sm text-gray-900">Product Gallery</h3>
                     <button className="text-xs text-gray-600 hover:text-gray-900">▼</button>
                   </div>
                   <div className="p-4">
                     <DropZoneField
                       field={targetFields.find(f => f.id === 'gallery_images')!}
                       mappedSourceField={getMappedSourceField('gallery_images')}
+                      manualValue={getManualValue('gallery_images')}
                       onDrop={handleDrop}
                       onRemove={handleRemoveMapping}
+                      onManualChange={handleManualValueChange}
                     />
                   </div>
                 </div>
 
-                {/* Brands (Custom Meta Box) */}
+                {/* Brands */}
                 <div className="border-2 border-gray-300 rounded-lg">
                   <div className="bg-gray-100 px-4 py-2 border-b border-gray-300 flex items-center justify-between">
-                    <h3 className="text-sm text-gray-900">Бренды</h3>
+                    <h3 className="text-sm text-gray-900">Brands</h3>
                     <button className="text-xs text-gray-600 hover:text-gray-900">▼</button>
                   </div>
                   <div className="p-4">
-                    <div className="text-xs text-gray-500 text-center py-3 border-2 border-dashed border-gray-300 rounded">
-                      Custom meta box
-                    </div>
+                    <DropZoneField
+                      field={targetFields.find(f => f.id === 'brands')!}
+                      mappedSourceField={getMappedSourceField('brands')}
+                      manualValue={getManualValue('brands')}
+                      onDrop={handleDrop}
+                      onRemove={handleRemoveMapping}
+                      onManualChange={handleManualValueChange}
+                    />
                   </div>
                 </div>
               </div>
@@ -1646,12 +2143,11 @@ function FieldMappingContent({ onBack, onNext }: FieldMappingProps) {
         </button>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-600">
-            Mapped: {mappings.length} / {targetFields.length} fields
+            Mapped: {(propMappings || []).length} / {targetFields.length} fields
           </span>
           <button
-            onClick={onNext}
-            disabled={!requiredFieldsMapped}
-            className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            onClick={handleNext}
+            className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center gap-2"
           >
             Next
             <ChevronRight className="w-5 h-5" />

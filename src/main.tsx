@@ -1,7 +1,15 @@
+import { createRoot } from "react-dom/client";
+import App from "./App";
+import "./index.css";
+import { t } from "./utils/i18n";
 
-  import { createRoot } from "react-dom/client";
-  import App from "./App.tsx";
-  import "./index.css";
+const rootElement = document.getElementById("pifwc-admin-root") || document.getElementById("root");
 
-  createRoot(document.getElementById("root")!).render(<App />);
+// Some parts of the UI bundle expect `t()` to be available globally.
+// Ensure it's present before rendering.
+(window as any).t = (window as any).t || t;
+
+if (rootElement) {
+  createRoot(rootElement).render(<App />);
+}
   

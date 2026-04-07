@@ -11,8 +11,10 @@ interface GroupedTabProps {
   setGroupedModel: (model: 'classic' | 'no-parent-sku' | 'auto-create' | 'bundle') => void;
   DropZoneField: any;
   getMappedSourceField: (id: string) => any;
+  getManualValue: (id: string) => string;
   handleDrop: (sourceField: any, targetField: any) => void;
   handleRemoveMapping: (targetFieldId: string) => void;
+  handleManualValueChange: (targetFieldId: string, value: string) => void;
 }
 
 export function GroupedTab({
@@ -20,8 +22,10 @@ export function GroupedTab({
   setGroupedModel,
   DropZoneField,
   getMappedSourceField,
+  getManualValue,
   handleDrop,
-  handleRemoveMapping
+  handleRemoveMapping,
+  handleManualValueChange
 }: GroupedTabProps) {
   const [children, setChildren] = useState<GroupedChild[]>([
     { id: '1', index: 1 }
@@ -41,12 +45,12 @@ export function GroupedTab({
   const renderChildFields = (child: GroupedChild, modelPrefix: string) => (
     <div key={child.id} className="bg-white border-2 border-blue-200 rounded-lg p-3 relative">
       <div className="flex items-center justify-between mb-3">
-        <h6 className="text-xs text-blue-900">Дочерний товар #{child.index}</h6>
+        <h6 className="text-xs text-blue-900">Child Product #{child.index}</h6>
         {children.length > 1 && (
           <button
             onClick={() => removeChild(child.id)}
             className="text-red-500 hover:text-red-700 transition-colors"
-            title="Удалить дочерний товар"
+            title="Remove child product"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -63,8 +67,10 @@ export function GroupedTab({
             section: 'grouped' 
           }}
           mappedSourceField={getMappedSourceField(`grp_child_sku_${modelPrefix}_${child.id}`)}
+          manualValue={getManualValue(`grp_child_sku_${modelPrefix}_${child.id}`)}
           onDrop={handleDrop}
           onRemove={handleRemoveMapping}
+          onManualChange={handleManualValueChange}
         />
         <DropZoneField
           field={{ 
@@ -76,8 +82,10 @@ export function GroupedTab({
             section: 'grouped' 
           }}
           mappedSourceField={getMappedSourceField(`grp_child_name_${modelPrefix}_${child.id}`)}
+          manualValue={getManualValue(`grp_child_name_${modelPrefix}_${child.id}`)}
           onDrop={handleDrop}
           onRemove={handleRemoveMapping}
+          onManualChange={handleManualValueChange}
         />
         <DropZoneField
           field={{ 
@@ -89,8 +97,10 @@ export function GroupedTab({
             section: 'grouped' 
           }}
           mappedSourceField={getMappedSourceField(`grp_child_price_${modelPrefix}_${child.id}`)}
+          manualValue={getManualValue(`grp_child_price_${modelPrefix}_${child.id}`)}
           onDrop={handleDrop}
           onRemove={handleRemoveMapping}
+          onManualChange={handleManualValueChange}
         />
         <DropZoneField
           field={{ 
@@ -102,8 +112,10 @@ export function GroupedTab({
             section: 'grouped' 
           }}
           mappedSourceField={getMappedSourceField(`grp_child_stock_${modelPrefix}_${child.id}`)}
+          manualValue={getManualValue(`grp_child_stock_${modelPrefix}_${child.id}`)}
           onDrop={handleDrop}
           onRemove={handleRemoveMapping}
+          onManualChange={handleManualValueChange}
         />
         <DropZoneField
           field={{ 
@@ -115,8 +127,10 @@ export function GroupedTab({
             section: 'grouped' 
           }}
           mappedSourceField={getMappedSourceField(`grp_child_image_${modelPrefix}_${child.id}`)}
+          manualValue={getManualValue(`grp_child_image_${modelPrefix}_${child.id}`)}
           onDrop={handleDrop}
           onRemove={handleRemoveMapping}
+          onManualChange={handleManualValueChange}
         />
       </div>
     </div>
@@ -126,7 +140,7 @@ export function GroupedTab({
     <div className="space-y-6">
       {/* Model Selection */}
       <div>
-        <h3 className="text-sm text-gray-900 mb-3">Выберите модель сгруппированного товара</h3>
+        <h3 className="text-sm text-gray-900 mb-3">Select grouped product model</h3>
         <div className="grid grid-cols-2 gap-3">
           {/* Model 1: Classic Grouped */}
           <button
@@ -140,17 +154,17 @@ export function GroupedTab({
             <div className="flex items-start gap-2 mb-2">
               <Check className={`w-5 h-5 mt-0.5 flex-shrink-0 ${groupedModel === 'classic' ? 'text-red-500' : 'text-gray-300'}`} />
               <div className="flex-1">
-                <h4 className="text-sm text-gray-900 mb-1">1. Классическая модель Grouped</h4>
+                <h4 className="text-sm text-gray-900 mb-1">1. Classic Grouped Model</h4>
                 <span className="inline-block px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
-                  РЕКОМЕНДУЕМАЯ
+                  RECOMMENDED
                 </span>
               </div>
             </div>
             <ul className="text-xs text-gray-600 space-y-1 ml-7">
-              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Родитель-контейнер</li>
-              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> У всех дочерних SKU</li>
-              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Все дочерние — simple</li>
-              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Фото — опционально</li>
+              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Parent container</li>
+              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> All children have SKU</li>
+              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> All children are simple</li>
+              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Images optional</li>
             </ul>
           </button>
 
@@ -166,17 +180,17 @@ export function GroupedTab({
             <div className="flex items-start gap-2 mb-2">
               <Check className={`w-5 h-5 mt-0.5 flex-shrink-0 ${groupedModel === 'no-parent-sku' ? 'text-red-500' : 'text-gray-300'}`} />
               <div className="flex-1">
-                <h4 className="text-sm text-gray-900 mb-1">2. Без SKU у родителя</h4>
+                <h4 className="text-sm text-gray-900 mb-1">2. No Parent SKU</h4>
                 <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">
-                  Идентификация по названию
+                  Identification by name
                 </span>
               </div>
             </div>
             <ul className="text-xs text-gray-600 space-y-1 ml-7">
-              <li className="flex items-center gap-1"><X className="w-3 h-3 text-red-500" /> Родительский SKU отсутствует</li>
-              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> У дочерних товаров SKU</li>
-              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Связь по Group Name</li>
-              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Фото — опционально</li>
+              <li className="flex items-center gap-1"><X className="w-3 h-3 text-red-500" /> Parent SKU absent</li>
+              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Children have SKU</li>
+              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Linked by Group Name</li>
+              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Images optional</li>
             </ul>
           </button>
 
@@ -192,17 +206,17 @@ export function GroupedTab({
             <div className="flex items-start gap-2 mb-2">
               <Check className={`w-5 h-5 mt-0.5 flex-shrink-0 ${groupedModel === 'auto-create' ? 'text-red-500' : 'text-gray-300'}`} />
               <div className="flex-1">
-                <h4 className="text-sm text-gray-900 mb-1">3. Автосоздание дочерних</h4>
+                <h4 className="text-sm text-gray-900 mb-1">3. Auto-create Children</h4>
                 <span className="inline-block px-2 py-0.5 bg-red-50 text-red-600 text-xs rounded border border-red-200">
-                  Товары создаются автоматически
+                  Products created automatically
                 </span>
               </div>
             </div>
             <ul className="text-xs text-gray-600 space-y-1 ml-7">
-              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Grouped-контейнер</li>
-              <li className="flex items-center gap-1"><PlusCircle className="w-3 h-3 text-purple-600" /> Автосоздание по Child SKU</li>
-              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Минимум ручной работы</li>
-              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Фото — опционально</li>
+              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Grouped container</li>
+              <li className="flex items-center gap-1"><PlusCircle className="w-3 h-3 text-purple-600" /> Auto-create by Child SKU</li>
+              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Minimal manual work</li>
+              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Images optional</li>
             </ul>
           </button>
 
@@ -218,17 +232,17 @@ export function GroupedTab({
             <div className="flex items-start gap-2 mb-2">
               <Check className={`w-5 h-5 mt-0.5 flex-shrink-0 ${groupedModel === 'bundle' ? 'text-red-500' : 'text-gray-300'}`} />
               <div className="flex-1">
-                <h4 className="text-sm text-gray-900 mb-1">4. Пакет (Bundle)</h4>
+                <h4 className="text-sm text-gray-900 mb-1">4. Bundle</h4>
                 <span className="inline-block px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded">
-                  Цена = сумма дочерних
+                  Price = sum of children
                 </span>
               </div>
             </div>
             <ul className="text-xs text-gray-600 space-y-1 ml-7">
-              <li className="flex items-center gap-1"><Package className="w-3 h-3 text-orange-600" /> Родитель — витрина</li>
-              <li className="flex items-center gap-1"><Calculator className="w-3 h-3 text-orange-600" /> Цена рассчитывается</li>
-              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Идеально для наборов</li>
-              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Фото — опционально</li>
+              <li className="flex items-center gap-1"><Package className="w-3 h-3 text-orange-600" /> Parent is showcase</li>
+              <li className="flex items-center gap-1"><Calculator className="w-3 h-3 text-orange-600" /> Price calculated</li>
+              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Perfect for sets</li>
+              <li className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-green-600" /> Images optional</li>
             </ul>
           </button>
         </div>
@@ -239,9 +253,9 @@ export function GroupedTab({
         {groupedModel === 'classic' && (
           <div className="bg-white border-2 border-gray-300 rounded-lg">
             <div className="bg-gray-100 px-4 py-3 border-b border-gray-300">
-              <h4 className="text-sm text-gray-900">Модель 1: Классическая Grouped (Рекомендуемая)</h4>
+              <h4 className="text-sm text-gray-900">Model 1: Classic Grouped (Recommended)</h4>
               <p className="text-xs text-gray-600 mt-1">
-                Эталонная модель для grouped-импорта. Совместима со всеми API и максимально устойчива к обновлениям.
+                Reference model for grouped import. Compatible with all APIs and highly stable for updates.
               </p>
             </div>
             
@@ -250,7 +264,7 @@ export function GroupedTab({
               <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                 <h5 className="text-xs text-red-900 mb-3 flex items-center gap-2">
                   <Package className="w-4 h-4" />
-                  Родительский товар (Container)
+                  Parent Product (Container)
                 </h5>
                 <div className="grid grid-cols-3 gap-3">
                   <DropZoneField
@@ -274,7 +288,7 @@ export function GroupedTab({
                 </div>
                 <div className="bg-yellow-50 border border-yellow-200 rounded p-2 mt-3 text-xs text-yellow-800 flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>Родитель не имеет цены и склада. Это только контейнер для дочерних товаров.</span>
+                  <span>Parent has no price or stock. It's only a container for child products.</span>
                 </div>
               </div>
 
@@ -282,7 +296,7 @@ export function GroupedTab({
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <h5 className="text-xs text-blue-900 mb-3 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4" />
-                  Дочерние товары (Simple Products)
+                  Child Products (Simple Products)
                 </h5>
                 
                 <div className="space-y-3">
@@ -302,7 +316,7 @@ export function GroupedTab({
               <div className="bg-gray-50 border border-gray-300 rounded p-3">
                 <h5 className="text-xs text-gray-900 mb-2 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-gray-500" />
-                  Пример табличной схемы импорта:
+                  Example table import schema:
                 </h5>
                 <div className="overflow-x-auto text-xs">
                   <table className="w-full border-collapse">
@@ -352,9 +366,9 @@ export function GroupedTab({
         {groupedModel === 'no-parent-sku' && (
           <div className="bg-white border-2 border-gray-300 rounded-lg">
             <div className="bg-gray-100 px-4 py-3 border-b border-gray-300">
-              <h4 className="text-sm text-gray-900">Модель 2: Grouped без SKU у родителя</h4>
+              <h4 className="text-sm text-gray-900">Model 2: Grouped without Parent SKU</h4>
               <p className="text-xs text-gray-600 mt-1">
-                Идентификация группы по названию. Часто встречается у поставщиков.
+                Group identification by name. Common with suppliers.
               </p>
             </div>
             
@@ -363,11 +377,11 @@ export function GroupedTab({
               <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                 <h5 className="text-xs text-red-900 mb-3 flex items-center gap-2">
                   <Package className="w-4 h-4" />
-                  Родительский товар (Container)
+                  Parent Product (Container)
                 </h5>
                 <div className="bg-yellow-50 border border-yellow-200 rounded p-2 mb-3 text-xs text-yellow-800 flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>Parent SKU отсутствует. Идентификация только по Group Name! Требуется строгая уникальность названий.</span>
+                  <span>Parent SKU is absent. Identification only by Group Name! Strict name uniqueness required.</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <DropZoneField
@@ -389,7 +403,7 @@ export function GroupedTab({
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <h5 className="text-xs text-blue-900 mb-3 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4" />
-                  Дочерние товары (Simple Products)
+                  Child Products (Simple Products)
                 </h5>
                 
                 <div className="space-y-3">
@@ -409,7 +423,7 @@ export function GroupedTab({
               <div className="bg-gray-50 border border-gray-300 rounded p-3">
                 <h5 className="text-xs text-gray-900 mb-2 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-gray-500" />
-                  Пример табличной схемы импорта:
+                  Example table import schema:
                 </h5>
                 <div className="overflow-x-auto text-xs">
                   <table className="w-full border-collapse">
@@ -451,9 +465,9 @@ export function GroupedTab({
         {groupedModel === 'auto-create' && (
           <div className="bg-white border-2 border-gray-300 rounded-lg">
             <div className="bg-gray-100 px-4 py-3 border-b border-gray-300">
-              <h4 className="text-sm text-gray-900">Модель 3: Автосоздание дочерних товаров</h4>
+              <h4 className="text-sm text-gray-900">Model 3: Auto-create Child Products</h4>
               <p className="text-xs text-gray-600 mt-1">
-                Недостающие товары создаются автоматически. Удобно для быстрого импорта наборов.
+                Missing products are created automatically. Convenient for quick set imports.
               </p>
             </div>
             
@@ -462,11 +476,11 @@ export function GroupedTab({
               <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
                 <h5 className="text-xs text-purple-900 mb-2 flex items-center gap-2">
                   <PlusCircle className="w-4 h-4" />
-                  Логика автосоздания:
+                  Auto-creation logic:
                 </h5>
                 <ul className="text-xs text-purple-700 space-y-1">
-                  <li>• Если Child SKU <strong>существует</strong> → привязывается к группе</li>
-                  <li>• Если Child SKU <strong>не существует</strong> → создаётся новый simple-товар автоматически</li>
+                  <li>• If Child SKU <strong>exists</strong> → linked to group</li>
+                  <li>• If Child SKU <strong>doesn't exist</strong> → new simple product created automatically</li>
                 </ul>
               </div>
 
@@ -474,7 +488,7 @@ export function GroupedTab({
               <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                 <h5 className="text-xs text-red-900 mb-3 flex items-center gap-2">
                   <Package className="w-4 h-4" />
-                  Родительский товар (Container)
+                  Parent Product (Container)
                 </h5>
                 <div className="grid grid-cols-3 gap-3">
                   <DropZoneField
@@ -502,11 +516,11 @@ export function GroupedTab({
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <h5 className="text-xs text-blue-900 mb-3 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4" />
-                  Дочерние товары (создаются автоматически при отсутствии)
+                  Child Products (created automatically if missing)
                 </h5>
                 <div className="bg-purple-50 border border-purple-200 rounded p-2 mb-3 text-xs text-purple-800 flex items-start gap-2">
                   <PlusCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>Дочерние товары создаются автоматически с указанными параметрами</span>
+                  <span>Child products are created automatically with specified parameters</span>
                 </div>
                 
                 <div className="space-y-3">
@@ -526,7 +540,7 @@ export function GroupedTab({
               <div className="bg-gray-50 border border-gray-300 rounded p-3">
                 <h5 className="text-xs text-gray-900 mb-2 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-gray-500" />
-                  Пример табличной схемы импорта:
+                  Example table import schema:
                 </h5>
                 <div className="overflow-x-auto text-xs">
                   <table className="w-full border-collapse">
@@ -568,9 +582,9 @@ export function GroupedTab({
         {groupedModel === 'bundle' && (
           <div className="bg-white border-2 border-gray-300 rounded-lg">
             <div className="bg-gray-100 px-4 py-3 border-b border-gray-300">
-              <h4 className="text-sm text-gray-900">Модель 4: Пакет (Bundle) без общей цены</h4>
+              <h4 className="text-sm text-gray-900">Model 4: Bundle without Total Price</h4>
               <p className="text-xs text-gray-600 mt-1">
-                Родитель — витрина. Цена формируется автоматически из дочерних товаров. Идеально для наборов.
+                Parent is showcase. Price calculated automatically from child products. Perfect for sets.
               </p>
             </div>
             
@@ -579,13 +593,13 @@ export function GroupedTab({
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
                 <h5 className="text-xs text-orange-900 mb-2 flex items-center gap-2">
                   <Calculator className="w-4 h-4" />
-                  Логика расчета цены:
+                  Price calculation logic:
                 </h5>
                 <ul className="text-xs text-orange-700 space-y-1">
-                  <li>• Цена grouped-товара <strong>не задана явно</strong></li>
-                  <li>• Итоговая стоимость = <strong>сумма выбранных дочерних товаров</strong></li>
-                  <li>• Пользователь может выбрать количество каждого товара</li>
-                  <li>• Купить несколько позиций одной кнопкой</li>
+                  <li>• Grouped product price <strong>not set explicitly</strong></li>
+                  <li>• Total cost = <strong>sum of selected child products</strong></li>
+                  <li>• User can select quantity of each product</li>
+                  <li>• Buy multiple items with one button</li>
                 </ul>
               </div>
 
@@ -593,7 +607,7 @@ export function GroupedTab({
               <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                 <h5 className="text-xs text-red-900 mb-3 flex items-center gap-2">
                   <Package className="w-4 h-4" />
-                  Родительский товар (Витрина)
+                  Parent Product (Showcase)
                 </h5>
                 <div className="grid grid-cols-3 gap-3">
                   <DropZoneField
@@ -617,7 +631,7 @@ export function GroupedTab({
                 </div>
                 <div className="bg-orange-50 border border-orange-200 rounded p-2 mt-3 text-xs text-orange-800 flex items-start gap-2">
                   <Calculator className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>Цена родителя не указывается. Она рассчитывается автоматически как сумма дочерних товаров.</span>
+                  <span>Parent price not specified. It's calculated automatically as sum of child products.</span>
                 </div>
               </div>
 
@@ -625,7 +639,7 @@ export function GroupedTab({
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <h5 className="text-xs text-blue-900 mb-3 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4" />
-                  Дочерние товары (Simple Products)
+                  Child Products (Simple Products)
                 </h5>
                 
                 <div className="space-y-3">
@@ -645,7 +659,7 @@ export function GroupedTab({
               <div className="bg-gray-50 border border-gray-300 rounded p-3">
                 <h5 className="text-xs text-gray-900 mb-2 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-gray-500" />
-                  Пример табличной схемы импорта:
+                  Example table import schema:
                 </h5>
                 <div className="overflow-x-auto text-xs">
                   <table className="w-full border-collapse">
@@ -697,16 +711,16 @@ export function GroupedTab({
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
         <h4 className="text-sm text-gray-900 mb-2 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-yellow-600" />
-          Обязательные правила для всех Grouped-моделей
+          Required rules for all Grouped models
         </h4>
         <ul className="text-xs text-gray-700 space-y-1 ml-6">
-          <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-green-600" /> Наличие хотя бы 1 дочернего товара в группе</li>
-          <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-green-600" /> Проверка уникальности Child SKU</li>
-          <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-green-600" /> Отсутствие циклических связей (группа внутри группы)</li>
-          <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-green-600" /> Поддержка добавления/удаления товаров в группе</li>
-          <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-green-600" /> Пересборка состава группы при повторном импорте</li>
-          <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-green-600" /> Самостоятельное существование дочерних товаров в каталоге</li>
-          <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-green-600" /> Наличие индивидуальных фото у каждого товара</li>
+          <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-green-600" /> At least 1 child product in group</li>
+          <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-green-600" /> Child SKU uniqueness check</li>
+          <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-green-600" /> No circular references (group within group)</li>
+          <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-green-600" /> Support for adding/removing products in group</li>
+          <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-green-600" /> Group composition rebuild on re-import</li>
+          <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-green-600" /> Independent existence of child products in catalog</li>
+          <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-green-600" /> Individual photos for each product</li>
         </ul>
       </div>
     </div>

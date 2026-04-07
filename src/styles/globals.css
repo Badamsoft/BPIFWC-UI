@@ -131,6 +131,36 @@
   }
 }
 
+@layer utilities {
+  .pifwc-center-text {
+    text-align: center !important;
+  }
+
+  .pifwc-upgrade-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 52px !important;
+    min-width: 320px !important;
+    padding-left: 48px !important;
+    padding-right: 48px !important;
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    border-radius: 0.5rem !important;
+    background: #d20c0b !important;
+    color: #ffffff !important;
+    border: 0 !important;
+    cursor: pointer !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+    transition: background-color 150ms ease, box-shadow 150ms ease !important;
+  }
+
+  .pifwc-upgrade-btn:hover {
+    background: #b00a0a !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14) !important;
+  }
+}
+
 /**
  * Base typography. This is not applied to elements which have an ancestor with a Tailwind text class.
  */
@@ -609,6 +639,58 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 /* Calendar popup - White background with black text and red accents */
 input[type="date"]::-webkit-calendar-picker-indicator::before {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+/* Select dropdown styles - White background with black text */
+select,
+select:not([multiple]),
+select[size="1"] {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  color-scheme: light !important;
+  -webkit-appearance: menulist;
+  -moz-appearance: menulist;
+  appearance: menulist;
+}
+
+select option,
+select:not([multiple]) option,
+select[size="1"] option {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  background: #ffffff !important;
+}
+
+/* Webkit specific for dropdown popup */
+select::-webkit-scrollbar {
+  background-color: #ffffff !important;
+}
+
+select::-webkit-scrollbar-thumb {
+  background-color: #d1d5db !important;
+}
+
+/* Firefox specific */
+@-moz-document url-prefix() {
+  select,
+  select option {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+}
+
+select:disabled {
+  background-color: #f3f4f6 !important;
+  color: #6b7280 !important;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Force white background for all select elements in the plugin */
+#pifwc-app select,
+#pifwc-app select option {
   background-color: #ffffff !important;
   color: #000000 !important;
 }
