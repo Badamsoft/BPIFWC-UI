@@ -25,7 +25,6 @@ interface NewImportProps {
 type FormatOption = {
   id: string;
   name: string;
-  pro?: boolean;
 };
 
 type ProductTypeOption = {
@@ -214,7 +213,6 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
       setProfileName(profile.name || '');
       
       const sourceConfig = profile.source_config || {};
-      setSelectedSource('upload');
       setSelectedFormat(sourceConfig.format || 'csv');
 
       // Set options
@@ -382,7 +380,6 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
         setProfileName(profile.name || '');
         
         const sourceConfig = profile.source_config || {};
-        setSelectedSource('upload');
         setSelectedFormat(sourceConfig.format || 'csv');
 
         // Set options
@@ -612,13 +609,6 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
       params.set('rows', '20');
       if (effectiveFormat) {
         params.set('format', effectiveFormat);
-      }
-      const lowerFormat = effectiveFormat.toLowerCase();
-      if (lowerFormat === 'json' && jsonItemsPath.trim()) {
-        params.set('items_path', jsonItemsPath.trim());
-      }
-      if (lowerFormat === 'xml' && xmlItemXPath.trim()) {
-        params.set('item_xpath', xmlItemXPath.trim());
       }
       const response = await fetch(`${restUrl}preview?${params.toString()}`, {
         method: 'GET',
@@ -1451,7 +1441,7 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Source:</span>
-                  <span className="text-gray-900">{selectedSource === 'upload' ? 'Upload File' : 'Not selected'}</span>
+                  <span className="text-gray-900">Upload File</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Format:</span>

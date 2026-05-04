@@ -6,7 +6,7 @@ import { t } from '../utils/i18n';
 export function HelpDocs() {
   const quickStartSteps = [
     t('Create a new import through "New Import" menu'),
-    t('Select data source (file, URL, FTP, etc.)'),
+    t('Select a CSV file to upload'),
     t('Configure field mapping'),
     t('Choose product update logic'),
     t('Run import or save as profile'),
@@ -93,7 +93,6 @@ export function HelpDocs() {
     { title: t('Quick Start - First Import'), duration: '5:30' },
     { title: t('Field Mapping Configuration'), duration: '8:15' },
     { title: t('Creating and Using Profiles'), duration: '6:45' },
-    { title: t('Working with FTP and SFTP'), duration: '12:00' },
   ];
 
   const documentation = [
@@ -215,32 +214,6 @@ export function HelpDocs() {
             );
           })}
         </div>
-      </div>
-
-      {/* API Access */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Code className="w-6 h-6 text-orange-600" />
-          <h2 className="text-gray-900">{t('API')}</h2>
-        </div>
-        <p className="text-gray-600 mb-4">
-          {t('Use API for programmatic management of imports')}
-        </p>
-        <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm overflow-x-auto mb-4">
-          <div>POST /wp-json/pifwc/v1/import/chunk/start</div>
-          <div>POST /wp-json/pifwc/v1/import/abort/&lt;job_id&gt;</div>
-          <div>GET /wp-json/pifwc/v1/import/jobs</div>
-          <div>GET /wp-json/pifwc/v1/profiles</div>
-        </div>
-        <a
-          href="https://badamsoft.com/documentation/?doc_product=importer&cat=api-sources"
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <FileText className="w-4 h-4" />
-          {t('Open API documentation')}
-        </a>
       </div>
 
       {/* Support */}

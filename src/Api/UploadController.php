@@ -38,26 +38,6 @@ class UploadController {
 
         register_rest_route(
             self::NAMESPACE,
-            '/fetch',
-            [
-                'methods'             => WP_REST_Server::CREATABLE,
-                'callback'            => [ $this, 'handle_fetch' ],
-                'permission_callback' => [ $this, 'check_permission' ],
-            ]
-        );
-
-        register_rest_route(
-            self::NAMESPACE,
-            '/fetch-api',
-            [
-                'methods'             => WP_REST_Server::CREATABLE,
-                'callback'            => [ $this, 'handle_fetch_api' ],
-                'permission_callback' => [ $this, 'check_permission' ],
-            ]
-        );
-
-        register_rest_route(
-            self::NAMESPACE,
             '/preview',
             [
                 'methods'             => WP_REST_Server::READABLE,
@@ -155,48 +135,6 @@ class UploadController {
             'format'        => $format,
             'message'       => __( 'File uploaded successfully.', 'badamsoft-product-importer-for-woocommerce' ),
         ] );
-    }
-
-    /**
-     * Handle URL fetch.
-     *
-     * @param WP_REST_Request $request Request object.
-     * @return WP_REST_Response
-     */ 
-     public function handle_fetch( WP_REST_Request $request ): WP_REST_Response {
-         $filtered = apply_filters( 'pifwc_rest_fetch', null, $request );
-         if ( $filtered instanceof WP_REST_Response ) {
-             return ResponseHelper::add_no_cache_headers( $filtered );
-         }
-         if ( is_array( $filtered ) ) {
-             return $this->success_response( $filtered );
-         }
-
-         return $this->error_response(
-             __( 'This remote source type is not supported by the active plugin configuration.', 'badamsoft-product-importer-for-woocommerce' ),
-             403
-         );
-     }
-
-    /**
-     * Handle API fetch with authentication.
-     *
-     * @param WP_REST_Request $request Request object.
-     * @return WP_REST_Response
-     */
-    public function handle_fetch_api( WP_REST_Request $request ): WP_REST_Response {
-        $filtered = apply_filters( 'pifwc_rest_fetch_api', null, $request );
-        if ( $filtered instanceof WP_REST_Response ) {
-            return ResponseHelper::add_no_cache_headers( $filtered );
-        }
-        if ( is_array( $filtered ) ) {
-            return $this->success_response( $filtered );
-        }
-
-        return $this->error_response(
-            __( 'This remote source type is not supported by the active plugin configuration.', 'badamsoft-product-importer-for-woocommerce' ),
-            403
-        );
     }
 
     /**

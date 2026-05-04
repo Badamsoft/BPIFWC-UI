@@ -88,23 +88,11 @@ export function ImportProfiles({ onNavigate }: ImportProfilesProps) {
         const ext = extractExt(config.file_name);
         if (ext && extToLabel[ext]) return extToLabel[ext];
       }
-      if (typeof config.url === 'string' && config.url) {
-        const ext = extractExt(config.url);
-        if (ext && extToLabel[ext]) return extToLabel[ext];
-      }
-      if (typeof config.path === 'string' && config.path) {
-        const ext = extractExt(config.path);
-        if (ext && extToLabel[ext]) return extToLabel[ext];
-      }
     }
 
     const fallback: { [key: string]: string } = {
       'local': 'CSV',
       'upload': 'CSV',
-      'url': 'URL',
-      'ftp': 'FTP',
-      'sftp': 'SFTP',
-      'api': 'API',
     };
     return fallback[source] || source.toUpperCase();
   };
@@ -113,30 +101,6 @@ export function ImportProfiles({ onNavigate }: ImportProfilesProps) {
     if (!config) return t('Not configured');
 
     switch (source) {
-      case 'url': {
-        const url = typeof config.url === 'string' ? config.url : '';
-        if (url) {
-          const short = url.length > 50 ? url.substring(0, 47) + '...' : url;
-          return 'URL: ' + short;
-        }
-        return 'URL';
-      }
-      case 'ftp':
-      case 'sftp': {
-        const host = typeof config.host === 'string' ? config.host : '';
-        const path = typeof config.path === 'string' ? config.path : '';
-        const label = source.toUpperCase();
-        if (host) return `${label}: ${host}${path ? '/' + path : ''}`;
-        return label;
-      }
-      case 'api': {
-        const endpoint = typeof config.endpoint === 'string' ? config.endpoint : '';
-        if (endpoint) {
-          const short = endpoint.length > 50 ? endpoint.substring(0, 47) + '...' : endpoint;
-          return 'API: ' + short;
-        }
-        return 'API';
-      }
       case 'local':
       case 'upload':
       default: {

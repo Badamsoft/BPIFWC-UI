@@ -8,9 +8,6 @@ use BadamSoft\ProductImporterForWooCommerce\FileParser\FileStorage;
 
 class SourceFetcher {
     public const TYPE_LOCAL = 'local';
-    public const TYPE_URL   = 'url';
-    public const TYPE_FTP   = 'ftp';
-    public const TYPE_SFTP  = 'sftp';
 
     private FileStorage $file_storage;
 
@@ -21,7 +18,7 @@ class SourceFetcher {
     /**
      * Fetch file from source and return file_id.
      *
-     * @param string $type   Source type (local, url, ftp, sftp).
+     * @param string $type   Source type (local only).
      * @param array  $config Source configuration.
      * @return array Result with file_id or error.
      */
