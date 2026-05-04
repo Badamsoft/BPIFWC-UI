@@ -7,11 +7,7 @@ import {
   Play,
   X,
   Save,
-  Link,
-  Server,
-  FileText,
-  FileSpreadsheet,
-  Code
+  FileText
 } from 'lucide-react';
 import 'react-datepicker/dist/react-datepicker.css';
 import { FieldMapping } from './FieldMapping';
@@ -19,8 +15,6 @@ import { DatePickerWithFooter } from './DatePickerWithFooter';
 import { ImportProgress } from './ImportProgress';
 import { addCacheBuster, getWpNonce } from '../utils/api';
 import { t } from '../utils/i18n';
-import { ProBadge } from './ProBadge';
-import { LicenseActivationModal } from './LicenseActivationModal';
 
 interface NewImportProps {
   onNavigate: (tab: string, profileId?: number) => void;
@@ -28,28 +22,25 @@ interface NewImportProps {
   resetNonce?: number;
 }
 
-type SourceOption = {
-  id: string;
-  name: string;
-  icon: ComponentType<{ className?: string }>;
-  description: string;
-  pro?: boolean;
-};
-
 type FormatOption = {
   id: string;
   name: string;
   pro?: boolean;
 };
 
+type ProductTypeOption = {
+  value: string;
+  label: string;
+};
+
 export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportProps) {
-  const [isPro, setIsPro] = useState(Boolean((window as any).pifwcAdmin?.isPro));
-  const isProAddonInstalled = Boolean((window as any).pifwcAdmin?.isProAddonInstalled ?? isPro);
-  const upgradeUrl = (window as any).pifwcAdmin?.upgradeUrl
-    || 'https://badamsoft.com/plugins/badamsoft-product-importer-for-woocommerce/';
-  const [licenseModalOpen, setLicenseModalOpen] = useState(false);
+  const importUi = (window as any).pifwcAdmin?.importUi || {};
+  const productTypeOptions: ProductTypeOption[] = Array.isArray(importUi.productTypes) && importUi.productTypes.length > 0
+    ? importUi.productTypes
+    : [{ value: 'simple', label: 'Simple Product' }];
+  const defaultProductType = productTypeOptions[0]?.value || 'simple';
+  const allowedProductTypes = new Set(productTypeOptions.map((option) => option.value));
   const [currentStep, setCurrentStep] = useState(1); // Start from step 1
-  const [selectedSource, setSelectedSource] = useState<string>('');
   const [selectedFormat, setSelectedFormat] = useState<string>('csv');
   const [updateMode, setUpdateMode] = useState<string>('both');
   const [comparisonKey, setComparisonKey] = useState<string>('sku');
@@ -93,7 +84,7 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
   // Field mapping states
   const [fieldMappings, setFieldMappings] = useState<any[]>([]);
   const [attributes, setAttributes] = useState<any[]>([]);
-  const [productType, setProductType] = useState<'simple' | 'variable' | 'grouped'>('simple');
+  const [productType, setProductType] = useState<string>(defaultProductType);
   const [templateApplyBackup, setTemplateApplyBackup] = useState<any | null>(null);
   const [isApplyingTemplate, setIsApplyingTemplate] = useState(false);
   const [templateAppliedProfileName, setTemplateAppliedProfileName] = useState<string | null>(null);
@@ -101,81 +92,6 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
   const chunkRunnerStopRef = useRef(false);
   const startImportInFlightRef = useRef(false);
   const isInitialMount = useRef(true);
-
-  useEffect(() => {
-    const syncProStatus = () => {
-      setIsPro(Boolean((window as any).pifwcAdmin?.isPro));
-    };
-
-    window.addEventListener('pifwc_pro_activated', syncProStatus);
-    window.addEventListener('pifwc_pro_deactivated', syncProStatus);
-
-    return () => {
-      window.removeEventListener('pifwc_pro_activated', syncProStatus);
-      window.removeEventListener('pifwc_pro_deactivated', syncProStatus);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (editProfileId) return;
-    if (typeof resetNonce !== 'number') return;
-
-    setCurrentStep(1);
-    setSelectedSource('');
-    setSelectedFormat('csv');
-
-    setProfileName('');
-    setSavedProfileId(null);
-    setSaveSuccess(false);
-
-    setSelectedSavedSource(null);
-    setShowSavedSources(false);
-
-    setUrlSource('');
-    setUrlAuthType('none');
-    setUrlUsername('');
-    setUrlPassword('');
-
-    setFtpHost('');
-    setFtpPort('21');
-    setFtpProtocol('ftp');
-    setFtpUsername('');
-    setFtpPassword('');
-    setFtpPath('');
-
-    setSheetsUrl('');
-    setSheetsRange('A1:Z1000');
-    setSheetsFirstRowHeaders(true);
-
-    setApiUrl('');
-    setApiMethod('GET');
-    setApiHeaders('');
-    setApiBody('');
-    setApiAuthType('none');
-    setApiAuthKey('');
-    setApiUsername('');
-    setApiPassword('');
-
-    setIsUploading(false);
-    setUploadError(null);
-    setUploadedFile(null);
-
-    setPreviewData(null);
-    setIsLoadingPreview(false);
-    setJsonItemsPath('');
-    setXmlItemXPath('');
-
-    setFieldMappings([]);
-    setAttributes([]);
-    setProductType('simple');
-
-    setIsImportRunning(false);
-    setShowProgress(false);
-    setImportJobId(null);
-    setImportStatus(null);
-    setImportTotalRows(null);
-    chunkRunnerStopRef.current = false;
-  }, [resetNonce, editProfileId]);
 
   const getDefaultCategories = () => ([
     { id: 'cat_1', name: '', level: 0 },
@@ -208,357 +124,31 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
   const [importTotalRows, setImportTotalRows] = useState<number | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
-  const [savedSources, setSavedSources] = useState<any[]>([]);
-  const [isLoadingSources, setIsLoadingSources] = useState(false);
-  const [selectedSavedSource, setSelectedSavedSource] = useState<number | null>(null);
-  const [showSavedSources, setShowSavedSources] = useState(false);
+  const uploadSourceName = t('Upload CSV File');
+  const uploadSourceDescription = t('Upload a CSV file from your computer');
+  const uploadSectionTitle = 'Upload CSV File';
 
-  const [urlSource, setUrlSource] = useState('');
-  const [urlAuthType, setUrlAuthType] = useState('none');
-  const [urlUsername, setUrlUsername] = useState('');
-  const [urlPassword, setUrlPassword] = useState('');
-
-  const [ftpHost, setFtpHost] = useState('');
-  const [ftpPort, setFtpPort] = useState('21');
-  const [ftpProtocol, setFtpProtocol] = useState('ftp');
-  const [ftpUsername, setFtpUsername] = useState('');
-  const [ftpPassword, setFtpPassword] = useState('');
-  const [ftpPath, setFtpPath] = useState('');
-
-  const [sheetsUrl, setSheetsUrl] = useState('');
-  const [sheetsRange, setSheetsRange] = useState('A1:Z1000');
-  const [sheetsFirstRowHeaders, setSheetsFirstRowHeaders] = useState(true);
-
-  const [apiUrl, setApiUrl] = useState('');
-  const [apiMethod, setApiMethod] = useState('GET');
-  const [apiHeaders, setApiHeaders] = useState('');
-  const [apiBody, setApiBody] = useState('');
-  const [apiAuthType, setApiAuthType] = useState('none');
-  const [apiAuthKey, setApiAuthKey] = useState('');
-  const [apiUsername, setApiUsername] = useState('');
-  const [apiPassword, setApiPassword] = useState('');
-
-  const [jsonItemsPath, setJsonItemsPath] = useState('');
-  const [xmlItemXPath, setXmlItemXPath] = useState('');
-
-  const sources: SourceOption[] = [
-    { id: 'upload', name: t('Upload File'), icon: Upload, description: t('Upload file from computer') },
-    { id: 'url', name: t('Import from URL'), icon: Link, description: t('Fetch file from a direct URL') },
-    { id: 'ftp', name: t('FTP / SFTP'), icon: Server, description: t('Connect to remote servers') },
-    { id: 'sheets', name: t('Google Sheets'), icon: FileSpreadsheet, description: t('Sync from a spreadsheet') },
-    { id: 'api', name: t('REST API'), icon: Code, description: t('Connect to REST API for product data') },
-  ];
-  const visibleSources = isPro ? sources : sources.filter((source) => source.id === 'upload');
-
-  const handleSourceClick = (source: SourceOption) => {
-    setSelectedSavedSource(null);
-    setShowSavedSources(false);
-    setUploadError(null);
-    setSelectedSource(source.id);
-  };
-
-  const formats: FormatOption[] = [
-    { id: 'csv', name: 'CSV' },
-    { id: 'xml', name: 'XML', pro: true },
-    { id: 'json', name: 'JSON', pro: true },
-    { id: 'xlsx', name: 'XLSX', pro: true },
-  ];
-  const visibleFormats = isPro ? formats : formats.filter((format) => format.id === 'csv');
-
-  const handleFormatClick = (format: FormatOption) => {
-    setSelectedFormat(format.id);
-  };
-
-  const uploadAccept = isPro ? '.csv,.xml,.json,.xlsx,.xls,.yml,.yaml' : '.csv';
-  const uploadFormatsLabel = isPro ? 'CSV, XML, JSON, XLSX' : 'CSV';
+  const uploadAccept = '.csv';
+  const uploadFormatsLabel = 'CSV';
 
   const validateCsvOnly = (file: File): boolean => {
-    if (isPro) {
-      return true;
-    }
     const ext = (file.name.split('.').pop() || '').toLowerCase();
     if (ext !== 'csv') {
       setUploadError(t('Only CSV files are supported by the active plugin configuration.'));
-      if (isProAddonInstalled) {
-        setLicenseModalOpen(true);
-      }
       return false;
     }
     return true;
   };
 
   useEffect(() => {
-    if (!isPro && selectedSource && selectedSource !== 'upload') {
-      setSelectedSource('upload');
-    }
-  }, [isPro, selectedSource]);
-
-  useEffect(() => {
-    if (!isPro && selectedFormat !== 'csv') {
+    if (selectedFormat !== 'csv') {
       setSelectedFormat('csv');
     }
-  }, [isPro, selectedFormat]);
-
-  const normalizeSourceType = (value?: string): string => {
-    const raw = (value || '').toLowerCase();
-    if (raw === 'google-sheets' || raw === 'google_sheets' || raw === 'sheets') {
-      return 'sheets';
-    }
-    if (raw === 'sftp') {
-      return 'sftp';
-    }
-    return raw;
-  };
-
-  const getEffectiveSourceType = () => {
-    if (selectedSource === 'ftp') {
-      return ftpProtocol === 'sftp' ? 'sftp' : 'ftp';
-    }
-    if (selectedSource === 'sheets') {
-      return 'url';
-    }
-    return selectedSource || 'upload';
-  };
-
-  const buildSheetsExportUrl = (inputUrl: string, range?: string) => {
-    const raw = inputUrl.trim();
-    if (!raw) {
-      return '';
-    }
-
-    const sheetIdMatch = raw.match(/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-    const plainIdMatch = raw.match(/^[a-zA-Z0-9-_]+$/);
-    const sheetId = sheetIdMatch?.[1] || (plainIdMatch ? raw : '');
-    if (!sheetId) {
-      return raw;
-    }
-
-    const gidMatch = raw.match(/[?&]gid=(\d+)/);
-    const params = new URLSearchParams();
-    params.set('format', 'csv');
-    if (gidMatch?.[1]) {
-      params.set('gid', gidMatch[1]);
-    }
-    if (range) {
-      params.set('range', range);
-    }
-
-    return `https://docs.google.com/spreadsheets/d/${sheetId}/export?${params.toString()}`;
-  };
+  }, [selectedFormat]);
 
   const sanitizeMaskedValue = (value?: string) => (value === '********' ? '' : value || '');
 
-  const fetchSavedSources = async () => {
-    setIsLoadingSources(true);
-    try {
-      const { restUrl, nonce } = (window as any).pifwcAdmin || {};
-      if (!restUrl || !nonce) {
-        throw new Error('WordPress API settings not found');
-      }
-
-      const response = await fetch(`${restUrl}sources`, {
-        method: 'GET',
-        headers: {
-          'X-WP-Nonce': nonce,
-        },
-        credentials: 'same-origin',
-      });
-
-      const data = await response.json();
-      if (response.ok && data.status === 'success') {
-        const sourcesData = data.data?.sources || data.data || [];
-        setSavedSources(Array.isArray(sourcesData) ? sourcesData : []);
-      } else {
-        setSavedSources([]);
-      }
-    } catch (error) {
-      setSavedSources([]);
-    } finally {
-      setIsLoadingSources(false);
-    }
-  };
-
-  const normalizeSavedHeaders = (headersValue: any) => {
-    if (!headersValue) {
-      return '';
-    }
-    if (typeof headersValue === 'string') {
-      return headersValue;
-    }
-    try {
-      return JSON.stringify(headersValue, null, 2);
-    } catch (e) {
-      return '';
-    }
-  };
-
-  const getSavedSourceKind = (source: any): string => {
-    const config = source?.config || {};
-    let sourceType = normalizeSourceType(source?.type);
-    if (sourceType === 'url' && (config.source_subtype === 'sheets' || config.sheets_range || config.range)) {
-      sourceType = 'sheets';
-    }
-    if (sourceType === 'sftp') {
-      sourceType = 'ftp';
-    }
-    return sourceType || 'url';
-  };
-
-  const getMatchingSavedSources = () => {
-    const target = selectedSource === 'sheets' ? 'sheets' : selectedSource === 'ftp' ? 'ftp' : selectedSource;
-    if (!target) return savedSources;
-    return savedSources.filter((source) => getSavedSourceKind(source) === target);
-  };
-
-  const matchingSavedSources = getMatchingSavedSources();
-
-  const applySavedSource = (source: any) => {
-    if (!source) return;
-    setSelectedSavedSource(source.id || null);
-    const config = source.config || {};
-    let sourceType = normalizeSourceType(source.type);
-    if (sourceType === 'url' && (config.source_subtype === 'sheets' || config.sheets_range || config.range)) {
-      sourceType = 'sheets';
-    }
-    if (sourceType === 'sftp') {
-      sourceType = 'ftp';
-    }
-    if (sourceType) {
-      setSelectedSource(sourceType);
-    }
-
-    if (sourceType === 'url') {
-      setUrlSource(config.url || '');
-      setUrlAuthType(config.auth_type || 'none');
-      setUrlUsername(sanitizeMaskedValue(config.username));
-      setUrlPassword(sanitizeMaskedValue(config.password));
-    } else if (sourceType === 'ftp' || sourceType === 'sftp') {
-      setFtpProtocol(sourceType === 'sftp' ? 'sftp' : 'ftp');
-      setFtpHost(config.host || '');
-      setFtpPort(config.port ? String(config.port) : (sourceType === 'sftp' ? '22' : '21'));
-      setFtpUsername(config.username || '');
-      setFtpPassword(sanitizeMaskedValue(config.password));
-      setFtpPath(config.path || '');
-    } else if (sourceType === 'sheets') {
-      setSheetsUrl(config.url || config.source_url || '');
-      setSheetsRange(config.range || config.sheets_range || 'A1:Z1000');
-      if (typeof config.sheets_first_row_headers === 'boolean') {
-        setSheetsFirstRowHeaders(config.sheets_first_row_headers);
-      }
-    } else if (sourceType === 'api') {
-      setApiUrl(config.url || '');
-      setApiMethod(config.method || 'GET');
-      setApiHeaders(normalizeSavedHeaders(config.headers));
-      setApiBody(config.body || '');
-      setApiAuthType(config.auth_type || 'none');
-      setApiAuthKey(sanitizeMaskedValue(config.auth_key));
-      setApiUsername(config.username || '');
-      setApiPassword(sanitizeMaskedValue(config.password));
-    }
-  };
-
-  const fetchRemoteSource = async (endpoint: 'fetch' | 'fetch-api', payload: Record<string, any>) => {
-    setIsUploading(true);
-    setUploadError(null);
-
-    try {
-      const { restUrl, nonce } = (window as any).pifwcAdmin || {};
-      if (!restUrl || !nonce) {
-        throw new Error('WordPress API settings not found');
-      }
-
-      const response = await fetch(`${restUrl}${endpoint}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-WP-Nonce': nonce,
-        },
-        credentials: 'same-origin',
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-      if (response.ok && data.status === 'success') {
-        setUploadedFile(data.data);
-        const fmt = data.data?.format ? (data.data.format === 'yml' ? 'yaml' : data.data.format) : '';
-        if (fmt) {
-          setSelectedFormat(fmt);
-        }
-        await fetchPreview(data.data.file_id, fmt || undefined);
-        setCurrentStep(2);
-      } else {
-        setUploadError(data.errors?.join(', ') || data.message || 'Failed to fetch file from source');
-      }
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'Failed to fetch file from source');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleFetchRemoteSource = async () => {
-    if (selectedSource === 'url') {
-      const url = urlSource.trim();
-      if (!url) {
-        setUploadError('Please enter a URL.');
-        return;
-      }
-      await fetchRemoteSource('fetch', { url, auth_type: urlAuthType, username: urlUsername, password: urlPassword, source_id: selectedSavedSource || undefined });
-      return;
-    }
-
-    if (selectedSource === 'sheets') {
-      const exportUrl = buildSheetsExportUrl(sheetsUrl, sheetsRange);
-      if (!exportUrl) {
-        setUploadError('Please enter a Google Sheets URL.');
-        return;
-      }
-      await fetchRemoteSource('fetch', { url: exportUrl, source_url: sheetsUrl.trim(), source_id: selectedSavedSource || undefined });
-      return;
-    }
-
-    if (selectedSource === 'ftp') {
-      if (!ftpHost.trim() || !ftpUsername.trim() || !ftpPath.trim()) {
-        setUploadError('Please fill in host, username, and path.');
-        return;
-      }
-      await fetchRemoteSource('fetch', {
-        type: ftpProtocol === 'sftp' ? 'sftp' : 'ftp',
-        host: ftpHost.trim(),
-        port: ftpPort ? Number(ftpPort) : undefined,
-        username: ftpUsername.trim(),
-        password: ftpPassword,
-        path: ftpPath.trim(),
-        source_id: selectedSavedSource || undefined,
-      });
-      return;
-    }
-
-    if (selectedSource === 'api') {
-      if (!apiUrl.trim()) {
-        setUploadError('Please enter an API URL.');
-        return;
-      }
-      await fetchRemoteSource('fetch-api', {
-        url: apiUrl.trim(),
-        method: apiMethod,
-        headers: apiHeaders,
-        body: apiBody,
-        auth_type: apiAuthType,
-        auth_key: apiAuthKey,
-        username: apiUsername,
-        password: apiPassword,
-        source_id: selectedSavedSource || undefined,
-      });
-    }
-  };
-
-  const buildSourceType = () => {
-    if (selectedSource === 'api') {
-      return 'api';
-    }
-    return getEffectiveSourceType();
-  };
+  const buildSourceType = () => 'upload';
 
   const buildSourceConfig = () => {
     const config: Record<string, any> = {
@@ -570,63 +160,6 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
       postStatus,
       postDates,
     };
-
-    if (selectedSavedSource) {
-      config.source_id = selectedSavedSource;
-    }
-
-    if (selectedSource === 'url') {
-      if (urlSource.trim()) {
-        config.url = urlSource.trim();
-      }
-      if (urlAuthType && urlAuthType !== 'none') {
-        config.auth_type = urlAuthType;
-        config.username = urlUsername;
-        config.password = urlPassword;
-      }
-    } else if (selectedSource === 'sheets') {
-      if (sheetsUrl.trim()) {
-        config.url = buildSheetsExportUrl(sheetsUrl, sheetsRange);
-        config.source_url = sheetsUrl.trim();
-        config.source_subtype = 'sheets';
-        config.sheets_range = sheetsRange;
-        config.sheets_first_row_headers = sheetsFirstRowHeaders;
-      }
-    } else if (selectedSource === 'ftp') {
-      if (ftpHost.trim()) {
-        config.host = ftpHost.trim();
-      }
-      if (ftpPort) {
-        config.port = Number(ftpPort);
-      }
-      if (ftpUsername.trim()) {
-        config.username = ftpUsername.trim();
-      }
-      if (ftpPassword) {
-        config.password = ftpPassword;
-      }
-      if (ftpPath.trim()) {
-        config.path = ftpPath.trim();
-      }
-    } else if (selectedSource === 'api') {
-      if (apiUrl.trim()) {
-        config.url = apiUrl.trim();
-      }
-      config.method = apiMethod;
-      config.headers = apiHeaders;
-      config.body = apiBody;
-      config.auth_type = apiAuthType;
-      config.auth_key = apiAuthKey;
-      config.username = apiUsername;
-      config.password = apiPassword;
-    }
-
-    if (jsonItemsPath.trim()) {
-      config.items_path = jsonItemsPath.trim();
-    }
-    if (xmlItemXPath.trim()) {
-      config.item_xpath = xmlItemXPath.trim();
-    }
 
     return config;
   };
@@ -677,9 +210,15 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
       const profile = data.data;
       setTemplateAppliedProfileName(profile.name || '');
 
-      const options = profile.options || {};
+      // Set profile name
+      setProfileName(profile.name || '');
+      
       const sourceConfig = profile.source_config || {};
+      setSelectedSource('upload');
+      setSelectedFormat(sourceConfig.format || 'csv');
 
+      // Set options
+      const options = profile.options || {};
       const rawMode = options.mode || sourceConfig.updateMode || sourceConfig.mode || 'both';
       setUpdateMode(rawMode === 'new' ? 'create' : rawMode);
       setComparisonKey(options.match_by || sourceConfig.comparisonKey || sourceConfig.match_by || 'sku');
@@ -710,32 +249,38 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
       setPostStatus(options.post_status || sourceConfig.postStatus || sourceConfig.post_status || 'published');
       setPostDates(options.post_dates || sourceConfig.postDates || sourceConfig.post_dates || 'as-specified');
 
-      const nextProductType = options.product_type || options.productType || 'simple';
-      if (nextProductType === 'simple' || nextProductType === 'variable' || nextProductType === 'grouped') {
+      const nextProductType = options.product_type || options.productType || defaultProductType;
+      if (allowedProductTypes.has(nextProductType)) {
         setProductType(nextProductType);
       } else {
-        setProductType('simple');
+        setProductType(defaultProductType);
       }
+      
+      // Set field mappings and attributes if available
+      if (profile.mapping) {
+        
+        // Check if mapping has fields array
+        if (profile.mapping.fields && Array.isArray(profile.mapping.fields)) {
+          setFieldMappings(profile.mapping.fields);
+        } else if (Array.isArray(profile.mapping)) {
+          // Legacy format: mapping is an array
+          setFieldMappings(profile.mapping);
+        } else {
+        }
+        
+        // Set attributes if available
+        if (profile.mapping.attributes && Array.isArray(profile.mapping.attributes)) {
+          setAttributes(profile.mapping.attributes);
+        } else {
+        }
 
-      const mapping = profile.mapping || null;
-      if (mapping && mapping.fields && Array.isArray(mapping.fields)) {
-        setFieldMappings(mapping.fields);
-      } else if (Array.isArray(mapping)) {
-        setFieldMappings(mapping);
+        // Set categories mapping if available
+        if (profile.mapping.categories && Array.isArray(profile.mapping.categories) && profile.mapping.categories.length > 0) {
+          setCategories(profile.mapping.categories);
+        } else {
+          setCategories(getDefaultCategories());
+        }
       } else {
-        setFieldMappings([]);
-      }
-
-      if (mapping && mapping.attributes && Array.isArray(mapping.attributes)) {
-        setAttributes(mapping.attributes);
-      } else {
-        setAttributes([]);
-      }
-
-      if (mapping && mapping.categories && Array.isArray(mapping.categories) && mapping.categories.length > 0) {
-        setCategoriesSafe(mapping.categories);
-      } else {
-        setCategoriesSafe(getDefaultCategories());
       }
     } catch (error) {
       alert(`Failed to apply template: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -837,11 +382,7 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
         setProfileName(profile.name || '');
         
         const sourceConfig = profile.source_config || {};
-        let normalizedSource = normalizeSourceType(profile.source || profile.source_type || sourceConfig.source_type || 'upload');
-        if (normalizedSource === 'url' && (sourceConfig.source_subtype === 'sheets' || sourceConfig.sheets_range || sourceConfig.range)) {
-          normalizedSource = 'sheets';
-        }
-        setSelectedSource(normalizedSource || 'upload');
+        setSelectedSource('upload');
         setSelectedFormat(sourceConfig.format || 'csv');
 
         // Set options
@@ -876,53 +417,13 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
         setPostStatus(options.post_status || sourceConfig.postStatus || sourceConfig.post_status || 'published');
         setPostDates(options.post_dates || sourceConfig.postDates || sourceConfig.post_dates || 'as-specified');
 
-        const nextProductType = options.product_type || options.productType || 'simple';
-        if (nextProductType === 'simple' || nextProductType === 'variable' || nextProductType === 'grouped') {
+        const nextProductType = options.product_type || options.productType || defaultProductType;
+        if (allowedProductTypes.has(nextProductType)) {
           setProductType(nextProductType);
         } else {
-          setProductType('simple');
+          setProductType(defaultProductType);
         }
         
-        if (sourceConfig.source_id) {
-          setSelectedSavedSource(Number(sourceConfig.source_id));
-        }
-
-        if (normalizedSource === 'url') {
-          setUrlSource(sourceConfig.url || sourceConfig.source_url || '');
-          setUrlAuthType(sourceConfig.auth_type || 'none');
-          setUrlUsername(sanitizeMaskedValue(sourceConfig.username));
-          setUrlPassword(sanitizeMaskedValue(sourceConfig.password));
-        } else if (normalizedSource === 'ftp' || normalizedSource === 'sftp') {
-          setFtpProtocol(normalizedSource === 'sftp' ? 'sftp' : 'ftp');
-          setFtpHost(sourceConfig.host || '');
-          setFtpPort(sourceConfig.port ? String(sourceConfig.port) : (normalizedSource === 'sftp' ? '22' : '21'));
-          setFtpUsername(sourceConfig.username || '');
-          setFtpPassword(sanitizeMaskedValue(sourceConfig.password));
-          setFtpPath(sourceConfig.path || '');
-        } else if (normalizedSource === 'sheets') {
-          setSheetsUrl(sourceConfig.source_url || sourceConfig.url || '');
-          setSheetsRange(sourceConfig.sheets_range || sourceConfig.range || 'A1:Z1000');
-          if (typeof sourceConfig.sheets_first_row_headers === 'boolean') {
-            setSheetsFirstRowHeaders(sourceConfig.sheets_first_row_headers);
-          }
-        } else if (normalizedSource === 'api') {
-          setApiUrl(sourceConfig.url || '');
-          setApiMethod(sourceConfig.method || 'GET');
-          setApiHeaders(normalizeSavedHeaders(sourceConfig.headers));
-          setApiBody(sourceConfig.body || '');
-          setApiAuthType(sourceConfig.auth_type || 'none');
-          setApiAuthKey(sanitizeMaskedValue(sourceConfig.auth_key));
-          setApiUsername(sourceConfig.username || '');
-          setApiPassword(sanitizeMaskedValue(sourceConfig.password));
-        }
-
-        if (sourceConfig.items_path) {
-          setJsonItemsPath(String(sourceConfig.items_path));
-        }
-        if (sourceConfig.item_xpath) {
-          setXmlItemXPath(String(sourceConfig.item_xpath));
-        }
-
         // If there's a file_id, load the file info
         if (sourceConfig.file_id) {
           setUploadedFile({
@@ -1217,635 +718,119 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
 
   const renderStep1 = () => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      <h2 className="text-gray-900 mb-6">Select Data Source</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {visibleSources.map((source) => {
-          const Icon = source.icon;
-          return (
-            <button
-              type="button"
-              key={source.id}
-              onClick={() => handleSourceClick(source)}
-              className={`relative p-6 rounded-lg border-2 transition-all text-left ${
-                selectedSource === source.id
-                  ? 'border-red-500 bg-red-50'
-                  : 'border-gray-200 hover:border-gray-300'
+      <h2 className="text-gray-900 mb-6">Upload CSV File</h2>
+      <div className="mt-6">
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <button
+            onClick={() => {
+              setShowUploadedFiles(true);
+              if (uploadedFilesList.length === 0) {
+                fetchUploadedFiles();
+              }
+            }}
+            className={`p-4 border-2 rounded-lg text-left transition-colors ${
+              showUploadedFiles ? 'border-red-500 bg-red-50' : 'border-gray-300 hover:border-gray-400'
+            }`}
+          >
+            <h4 className="text-gray-900 font-medium mb-1">Use Uploaded File</h4>
+            <p className="text-sm text-gray-600">Select from previously uploaded files</p>
+          </button>
+
+          <button
+            onClick={() => setShowUploadedFiles(false)}
+            className={`p-4 border-2 rounded-lg text-left transition-colors ${
+              !showUploadedFiles ? 'border-red-500 bg-red-50' : 'border-gray-300 hover:border-gray-400'
+            }`}
+          >
+            <h4 className="text-gray-900 font-medium mb-1">Upload New File</h4>
+            <p className="text-sm text-gray-600">Upload file from your computer</p>
+          </button>
+        </div>
+
+        {showUploadedFiles ? (
+          <div className="p-6 border-2 border-gray-300 rounded-lg">
+            <h4 className="text-gray-900 font-medium mb-4">Select Previously Uploaded File</h4>
+            {isLoadingUploadedFiles ? (
+              <div className="text-center py-8 text-gray-600">Loading files...</div>
+            ) : uploadedFilesList.length === 0 ? (
+              <div className="text-center py-8 text-gray-600">No uploaded files found</div>
+            ) : (
+              <div
+                className="overflow-y-auto border-2 border-gray-200 rounded-lg p-2"
+                style={{ maxHeight: '160px' }}
+              >
+                <div className="space-y-2">
+                  {uploadedFilesList.map((file: any) => (
+                    <button
+                      key={file.file_id}
+                      onClick={() => handleSelectUploadedFile(file)}
+                      className={`w-full p-3 text-left rounded-lg border-2 transition-colors ${
+                        selectedUploadedFile?.file_id === file.file_id
+                          ? 'border-green-500 bg-green-50'
+                          : 'border-gray-300 hover:border-gray-400 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">{file.original_name}</div>
+                          <div className="text-sm text-gray-600">
+                            {file.extension?.toUpperCase()} • {(file.size / 1024).toFixed(2)} KB • {new Date(file.upload_time * 1000).toLocaleDateString()}
+                          </div>
+                        </div>
+                        {selectedUploadedFile?.file_id === file.file_id && (
+                          <Check className="w-5 h-5 text-green-600 ml-2 flex-shrink-0" />
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div
+            className="p-6 border-2 border-dashed border-gray-300 rounded-lg text-center hover:border-red-400 transition-colors"
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
+            <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+            <p className="text-gray-900 mb-2">Drag & drop file here or click to select</p>
+            <p className="text-sm text-gray-600 mb-4">Supported format: {uploadFormatsLabel}</p>
+
+            {uploadError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+                {uploadError}
+              </div>
+            )}
+
+            {uploadedFile && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-600 text-sm">
+                ✓ File uploaded: {uploadedFile.original_name}
+              </div>
+            )}
+
+            <input
+              type="file"
+              id="file-upload"
+              accept={uploadAccept}
+              onChange={handleFileUpload}
+              disabled={isUploading}
+              className="hidden"
+            />
+            <label
+              htmlFor="file-upload"
+              className={`inline-block px-6 py-2 rounded-lg cursor-pointer ${
+                isUploading
+                  ? 'bg-gray-400 text-white cursor-not-allowed'
+                  : 'bg-red-500 text-white hover:bg-red-600'
               }`}
             >
-              <div className="flex items-start justify-between mb-3">
-                <Icon className="w-8 h-8 text-red-500" />
-              </div>
-              <h3 className="text-gray-900 mb-1">{source.name}</h3>
-              <p className="text-sm text-gray-600">{source.description}</p>
-            </button>
-          );
-        })}
+              {isUploading ? 'Uploading...' : 'Select File'}
+            </label>
+          </div>
+        )}
       </div>
 
-      {selectedSource === 'upload' && (
-        <div className="mt-6">
-          {/* Toggle between uploaded files and new upload */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <button
-              onClick={() => {
-                setShowUploadedFiles(true);
-                if (uploadedFilesList.length === 0) {
-                  fetchUploadedFiles();
-                }
-              }}
-              className={`p-4 border-2 rounded-lg text-left transition-colors ${
-                showUploadedFiles ? 'border-red-500 bg-red-50' : 'border-gray-300 hover:border-gray-400'
-              }`}
-            >
-              <h4 className="text-gray-900 font-medium mb-1">Use Uploaded File</h4>
-              <p className="text-sm text-gray-600">Select from previously uploaded files</p>
-            </button>
-            
-            <button
-              onClick={() => setShowUploadedFiles(false)}
-              className={`p-4 border-2 rounded-lg text-left transition-colors ${
-                !showUploadedFiles ? 'border-red-500 bg-red-50' : 'border-gray-300 hover:border-gray-400'
-              }`}
-            >
-              <h4 className="text-gray-900 font-medium mb-1">Upload New File</h4>
-              <p className="text-sm text-gray-600">Upload file from your computer</p>
-            </button>
-          </div>
-
-          {showUploadedFiles ? (
-            <div className="p-6 border-2 border-gray-300 rounded-lg">
-              <h4 className="text-gray-900 font-medium mb-4">Select Previously Uploaded File</h4>
-              {isLoadingUploadedFiles ? (
-                <div className="text-center py-8 text-gray-600">Loading files...</div>
-              ) : uploadedFilesList.length === 0 ? (
-                <div className="text-center py-8 text-gray-600">No uploaded files found</div>
-              ) : (
-                <div 
-                  className="overflow-y-auto border-2 border-gray-200 rounded-lg p-2"
-                  style={{ maxHeight: '160px' }}
-                >
-                  <div className="space-y-2">
-                    {uploadedFilesList.map((file: any) => (
-                      <button
-                        key={file.file_id}
-                        onClick={() => handleSelectUploadedFile(file)}
-                        className={`w-full p-3 text-left rounded-lg border-2 transition-colors ${
-                          selectedUploadedFile?.file_id === file.file_id
-                            ? 'border-green-500 bg-green-50'
-                            : 'border-gray-300 hover:border-gray-400 bg-white'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="font-medium text-gray-900">{file.original_name}</div>
-                            <div className="text-sm text-gray-600">
-                              {file.extension?.toUpperCase()} • {(file.size / 1024).toFixed(2)} KB • {new Date(file.upload_time * 1000).toLocaleDateString()}
-                            </div>
-                          </div>
-                          {selectedUploadedFile?.file_id === file.file_id && (
-                            <Check className="w-5 h-5 text-green-600 ml-2 flex-shrink-0" />
-                          )}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div 
-              className="p-6 border-2 border-dashed border-gray-300 rounded-lg text-center hover:border-red-400 transition-colors"
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-            >
-              <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-900 mb-2">Drag & drop file here or click to select</p>
-              <p className="text-sm text-gray-600 mb-4">Supported formats: {uploadFormatsLabel}</p>
-              
-              {uploadError && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-                  {uploadError}
-                </div>
-              )}
-              
-              {uploadedFile && (
-                <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-600 text-sm">
-                  ✓ File uploaded: {uploadedFile.original_name}
-                </div>
-              )}
-              
-              <input
-                type="file"
-                id="file-upload"
-                accept={uploadAccept}
-                onChange={handleFileUpload}
-                disabled={isUploading}
-                className="hidden"
-              />
-              <label
-                htmlFor="file-upload"
-                className={`inline-block px-6 py-2 rounded-lg cursor-pointer ${
-                  isUploading
-                    ? 'bg-gray-400 text-white cursor-not-allowed'
-                    : 'bg-red-500 text-white hover:bg-red-600'
-                }`}
-              >
-                {isUploading ? 'Uploading...' : 'Select File'}
-              </label>
-            </div>
-          )}
-        </div>
-      )}
-
-      {selectedSource === 'url' && (
-        <div className="mt-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h4 className="text-gray-900 font-medium">Fetch from URL</h4>
-            <button
-              type="button"
-              onClick={() => {
-                setShowSavedSources((prev) => {
-                  const next = !prev;
-                  if (next && savedSources.length === 0) {
-                    fetchSavedSources();
-                  }
-                  return next;
-                });
-              }}
-              className="text-sm text-red-600 hover:text-red-700"
-            >
-              {showSavedSources ? 'Hide Saved Sources' : 'Use Saved Source'}
-            </button>
-          </div>
-
-          {showSavedSources && (
-            <div className="p-4 border border-gray-200 rounded-lg">
-              {isLoadingSources ? (
-                <div className="text-sm text-gray-600">Loading sources...</div>
-              ) : matchingSavedSources.length === 0 ? (
-                <div className="text-sm text-gray-600">No saved sources found.</div>
-              ) : (
-                <div className="space-y-2">
-                  {matchingSavedSources.map((source: any) => (
-                    <button
-                      key={source.id}
-                      type="button"
-                      onClick={() => applySavedSource(source)}
-                      className={`w-full p-3 border rounded-lg text-left ${
-                        selectedSavedSource === source.id
-                          ? 'border-green-500 bg-green-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="text-sm font-medium text-gray-900">{source.name || `Source #${source.id}`}</div>
-                      <div className="text-xs text-gray-500">{(source.type || '').toUpperCase()}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="space-y-3">
-            <label className="block text-sm text-gray-600">File URL</label>
-            <input
-              type="url"
-              value={urlSource}
-              onChange={(e) => setUrlSource(e.target.value)}
-              placeholder="https://example.com/products.csv"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Authentication</label>
-              <select
-                value={urlAuthType}
-                onChange={(e) => setUrlAuthType(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              >
-                <option value="none">None</option>
-                <option value="basic">Basic</option>
-              </select>
-            </div>
-            {urlAuthType !== 'none' && (
-              <>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-2">Username</label>
-                  <input
-                    type="text"
-                    value={urlUsername}
-                    onChange={(e) => setUrlUsername(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-2">Password</label>
-                  <input
-                    type="password"
-                    value={urlPassword}
-                    onChange={(e) => setUrlPassword(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-              </>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => void handleFetchRemoteSource()}
-            disabled={isUploading}
-            className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50"
-          >
-            {isUploading ? 'Fetching...' : 'Fetch File'}
-          </button>
-        </div>
-      )}
-
-      {selectedSource === 'ftp' && (
-        <div className="mt-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h4 className="text-gray-900 font-medium">Connect via FTP / SFTP</h4>
-            <button
-              type="button"
-              onClick={() => {
-                setShowSavedSources((prev) => {
-                  const next = !prev;
-                  if (next && savedSources.length === 0) {
-                    fetchSavedSources();
-                  }
-                  return next;
-                });
-              }}
-              className="text-sm text-red-600 hover:text-red-700"
-            >
-              {showSavedSources ? 'Hide Saved Sources' : 'Use Saved Source'}
-            </button>
-          </div>
-
-          {showSavedSources && (
-            <div className="p-4 border border-gray-200 rounded-lg">
-              {isLoadingSources ? (
-                <div className="text-sm text-gray-600">Loading sources...</div>
-              ) : matchingSavedSources.length === 0 ? (
-                <div className="text-sm text-gray-600">No saved sources found.</div>
-              ) : (
-                <div className="space-y-2">
-                  {matchingSavedSources.map((source: any) => (
-                    <button
-                      key={source.id}
-                      type="button"
-                      onClick={() => applySavedSource(source)}
-                      className={`w-full p-3 border rounded-lg text-left ${
-                        selectedSavedSource === source.id
-                          ? 'border-green-500 bg-green-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="text-sm font-medium text-gray-900">{source.name || `Source #${source.id}`}</div>
-                      <div className="text-xs text-gray-500">{(source.type || '').toUpperCase()}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Protocol</label>
-              <select
-                value={ftpProtocol}
-                onChange={(e) => setFtpProtocol(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              >
-                <option value="ftp">FTP</option>
-                <option value="sftp">SFTP</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Port</label>
-              <input
-                type="number"
-                value={ftpPort}
-                onChange={(e) => setFtpPort(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Host</label>
-              <input
-                type="text"
-                value={ftpHost}
-                onChange={(e) => setFtpHost(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Username</label>
-              <input
-                type="text"
-                value={ftpUsername}
-                onChange={(e) => setFtpUsername(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Password</label>
-              <input
-                type="password"
-                value={ftpPassword}
-                onChange={(e) => setFtpPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Remote Path</label>
-              <input
-                type="text"
-                value={ftpPath}
-                onChange={(e) => setFtpPath(e.target.value)}
-                placeholder="/exports/products.csv"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => void handleFetchRemoteSource()}
-            disabled={isUploading}
-            className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50"
-          >
-            {isUploading ? 'Fetching...' : 'Fetch File'}
-          </button>
-        </div>
-      )}
-
-      {selectedSource === 'sheets' && (
-        <div className="mt-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h4 className="text-gray-900 font-medium">Google Sheets</h4>
-            <button
-              type="button"
-              onClick={() => {
-                setShowSavedSources((prev) => {
-                  const next = !prev;
-                  if (next && savedSources.length === 0) {
-                    fetchSavedSources();
-                  }
-                  return next;
-                });
-              }}
-              className="text-sm text-red-600 hover:text-red-700"
-            >
-              {showSavedSources ? 'Hide Saved Sources' : 'Use Saved Source'}
-            </button>
-          </div>
-
-          {showSavedSources && (
-            <div className="p-4 border border-gray-200 rounded-lg">
-              {isLoadingSources ? (
-                <div className="text-sm text-gray-600">Loading sources...</div>
-              ) : matchingSavedSources.length === 0 ? (
-                <div className="text-sm text-gray-600">No saved sources found.</div>
-              ) : (
-                <div className="space-y-2">
-                  {matchingSavedSources.map((source: any) => (
-                    <button
-                      key={source.id}
-                      type="button"
-                      onClick={() => applySavedSource(source)}
-                      className={`w-full p-3 border rounded-lg text-left ${
-                        selectedSavedSource === source.id
-                          ? 'border-green-500 bg-green-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="text-sm font-medium text-gray-900">{source.name || `Source #${source.id}`}</div>
-                      <div className="text-xs text-gray-500">{(source.type || '').toUpperCase()}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="space-y-3">
-            <label className="block text-sm text-gray-600">Google Sheets URL or ID</label>
-            <input
-              type="text"
-              value={sheetsUrl}
-              onChange={(e) => setSheetsUrl(e.target.value)}
-              placeholder="https://docs.google.com/spreadsheets/d/..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Range</label>
-              <input
-                type="text"
-                value={sheetsRange}
-                onChange={(e) => setSheetsRange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
-            </div>
-            <div className="flex items-center gap-2 mt-6">
-              <input
-                id="sheets-first-row"
-                type="checkbox"
-                checked={sheetsFirstRowHeaders}
-                onChange={(e) => setSheetsFirstRowHeaders(e.target.checked)}
-                className="w-4 h-4"
-              />
-              <label htmlFor="sheets-first-row" className="text-sm text-gray-700">First row has headers</label>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => void handleFetchRemoteSource()}
-            disabled={isUploading}
-            className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50"
-          >
-            {isUploading ? 'Fetching...' : 'Fetch File'}
-          </button>
-        </div>
-      )}
-
-      {selectedSource === 'api' && (
-        <div className="mt-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h4 className="text-gray-900 font-medium">REST API</h4>
-            <button
-              type="button"
-              onClick={() => {
-                setShowSavedSources((prev) => {
-                  const next = !prev;
-                  if (next && savedSources.length === 0) {
-                    fetchSavedSources();
-                  }
-                  return next;
-                });
-              }}
-              className="text-sm text-red-600 hover:text-red-700"
-            >
-              {showSavedSources ? 'Hide Saved Sources' : 'Use Saved Source'}
-            </button>
-          </div>
-
-          {showSavedSources && (
-            <div className="p-4 border border-gray-200 rounded-lg">
-              {isLoadingSources ? (
-                <div className="text-sm text-gray-600">Loading sources...</div>
-              ) : matchingSavedSources.length === 0 ? (
-                <div className="text-sm text-gray-600">No saved sources found.</div>
-              ) : (
-                <div className="space-y-2">
-                  {matchingSavedSources.map((source: any) => (
-                    <button
-                      key={source.id}
-                      type="button"
-                      onClick={() => applySavedSource(source)}
-                      className={`w-full p-3 border rounded-lg text-left ${
-                        selectedSavedSource === source.id
-                          ? 'border-green-500 bg-green-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="text-sm font-medium text-gray-900">{source.name || `Source #${source.id}`}</div>
-                      <div className="text-xs text-gray-500">{(source.type || '').toUpperCase()}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="space-y-3">
-            <label className="block text-sm text-gray-600">API URL</label>
-            <input
-              type="url"
-              value={apiUrl}
-              onChange={(e) => setApiUrl(e.target.value)}
-              placeholder="https://api.example.com/products"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Method</label>
-              <select
-                value={apiMethod}
-                onChange={(e) => setApiMethod(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              >
-                {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((method) => (
-                  <option key={method} value={method}>{method}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Auth Type</label>
-              <select
-                value={apiAuthType}
-                onChange={(e) => setApiAuthType(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              >
-                <option value="none">None</option>
-                <option value="basic">Basic</option>
-                <option value="bearer">Bearer</option>
-                <option value="apikey">API Key</option>
-              </select>
-            </div>
-            {apiAuthType === 'apikey' && (
-              <div>
-                <label className="block text-sm text-gray-600 mb-2">API Key</label>
-                <input
-                  type="text"
-                  value={apiAuthKey}
-                  onChange={(e) => setApiAuthKey(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-            )}
-            {apiAuthType === 'basic' && (
-              <div>
-                <label className="block text-sm text-gray-600 mb-2">Username</label>
-                <input
-                  type="text"
-                  value={apiUsername}
-                  onChange={(e) => setApiUsername(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-            )}
-            {apiAuthType === 'basic' && (
-              <div>
-                <label className="block text-sm text-gray-600 mb-2">Password</label>
-                <input
-                  type="password"
-                  value={apiPassword}
-                  onChange={(e) => setApiPassword(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-            )}
-            {apiAuthType === 'bearer' && (
-              <div>
-                <label className="block text-sm text-gray-600 mb-2">Bearer Token</label>
-                <input
-                  type="text"
-                  value={apiAuthKey}
-                  onChange={(e) => setApiAuthKey(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-600 mb-2">Headers (JSON or key:value per line)</label>
-            <textarea
-              value={apiHeaders}
-              onChange={(e) => setApiHeaders(e.target.value)}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-            />
-          </div>
-
-          {apiMethod !== 'GET' && (
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">Body</label>
-              <textarea
-                value={apiBody}
-                onChange={(e) => setApiBody(e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-              />
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => void handleFetchRemoteSource()}
-            disabled={isUploading}
-            className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50"
-          >
-            {isUploading ? 'Fetching...' : 'Fetch Data'}
-          </button>
-        </div>
-      )}
     </div>
   );
 
@@ -1855,23 +840,10 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
       
       <div className="mb-6">
         <label className="block text-sm text-gray-600 mb-2">File Format</label>
-        <div className="flex gap-2">
-          {visibleFormats.map((format) => {
-            return (
-              <button
-                key={format.id}
-                onClick={() => handleFormatClick(format)}
-                className={`px-4 py-2 rounded-lg border-2 transition-colors ${
-                  selectedFormat === format.id
-                    ? 'bg-red-500 text-white border-red-500'
-                    : 'bg-white text-gray-700 border-gray-300 hover:border-red-300'
-                }`}
-              >
-                {format.name}
-              </button>
-            );
-          })}
+        <div className="inline-flex items-center rounded-lg border border-gray-300 bg-gray-50 px-4 py-2 text-sm text-gray-700">
+          CSV
         </div>
+        <p className="text-xs text-gray-500 mt-2">Only CSV files are supported in the free plugin.</p>
       </div>
 
 
@@ -2352,6 +1324,8 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
         return snippet ? `${statusLine}: ${snippet}` : statusLine;
       };
 
+      const currentFileId = uploadedFile?.file_id || uploadedFile?.id;
+
       const startResponse = await fetch('/wp-json/pifwc/v1/import/chunk/start', {
         method: 'POST',
         headers: {
@@ -2360,6 +1334,7 @@ export function NewImport({ onNavigate, editProfileId, resetNonce }: NewImportPr
         },
         body: JSON.stringify({
           profile_id: profileId,
+          file_id: currentFileId,
           mode: updateMode,
           match_by: comparisonKey
         })

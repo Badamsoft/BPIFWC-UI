@@ -1,19 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Save, RefreshCw, AlertCircle, CheckCircle, Copy, Play, Crown, ExternalLink } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Save, RefreshCw, AlertCircle, CheckCircle, ExternalLink } from 'lucide-react';
 import { addCacheBuster, getWpNonce } from '../utils/api';
 import { t } from '../utils/i18n';
-import { ProBadge } from './ProBadge';
 
 export function Settings() {
-  type CronStatus = {
-    token: string;
-    url: string;
-    last_ping_ts: number;
-    last_ping_iso: string | null;
-    last_ping_human: string | null;
-    last_ping_age_sec: number | null;
-  };
-
   type PluginSettings = {
     general: {
       batch_size: number;
@@ -94,28 +84,7 @@ export function Settings() {
     },
   };
 
-  const isPro = Boolean((window as any).pifwcAdmin?.isPro);
-
-  const runCronNow = async () => {
-    const token = String(cronStatus?.token || '');
-    if (!token) {
-      setCronError('Missing cron token');
-      return;
-    }
-    try {
-      setCronLoading(true);
-      setCronError(null);
-      await apiFetchJson(`/wp-json/pifwc/v1/cron/run?token=${encodeURIComponent(token)}&max_seconds=55&max_jobs=20&t=${Date.now()}`);
-      await fetchCronStatus();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to run cron';
-      setCronError(msg);
-    } finally {
-      setCronLoading(false);
-    }
-  };
-
-  const [cronStatus, setCronStatus] = useState<CronStatus | null>(null);
+  const [cronStatus, setCronStatus] = useState<null>(null);
   const [cronLoading, setCronLoading] = useState(false);
   const [cronError, setCronError] = useState<string | null>(null);
 
@@ -146,33 +115,6 @@ export function Settings() {
       throw new Error(msg);
     }
     return data;
-  };
-
-  const fetchCronStatus = async () => {
-    if (!isPro) {
-      setCronStatus(null);
-      setCronError(null);
-      setCronLoading(false);
-      return;
-    }
-
-    try {
-      setCronLoading(true);
-      setCronError(null);
-      const data = await apiFetchJson(`/wp-json/pifwc/v1/cron/status?t=${Date.now()}`);
-      const payload = (data?.data || {}) as CronStatus;
-      if (!payload || !payload.url) {
-        setCronStatus(null);
-        return;
-      }
-      setCronStatus(payload);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to load cron status';
-      setCronError(msg);
-      setCronStatus(null);
-    } finally {
-      setCronLoading(false);
-    }
   };
 
   const fetchSettings = async () => {
@@ -229,22 +171,6 @@ export function Settings() {
     }
   };
 
-  const regenerateCronToken = async () => {
-    const confirmed = confirm('Regenerate cron token? Old cron URL will stop working.');
-    if (!confirmed) return;
-    try {
-      setCronLoading(true);
-      setCronError(null);
-      await apiFetchJson(`/wp-json/pifwc/v1/cron/token/regenerate?t=${Date.now()}`, { method: 'POST' });
-      await fetchCronStatus();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to regenerate token';
-      setCronError(msg);
-    } finally {
-      setCronLoading(false);
-    }
-  };
-
   const copyText = async (text: string) => {
     if (!text) return;
     try {
@@ -259,59 +185,15 @@ export function Settings() {
   };
 
   useEffect(() => {
-    if (isPro) {
-      fetchCronStatus();
-    } else {
-      setCronStatus(null);
-      setCronError(null);
-      setCronLoading(false);
-    }
     fetchSettings();
-  }, [isPro]);
-
-  const cronUrlWithParams = useMemo(() => {
-    const baseUrl = String(cronStatus?.url || '');
-    if (!baseUrl) return '';
-    const sep = baseUrl.includes('?') ? '&' : '?';
-    return `${baseUrl}${sep}max_seconds=55&max_jobs=20`;
-  }, [cronStatus]);
-
-  const cronHealth = useMemo(() => {
-    const age = cronStatus?.last_ping_age_sec;
-    if (age === null || age === undefined) return { label: 'No pings yet', cls: 'text-gray-600', badge: 'bg-gray-100 text-gray-700' };
-    if (age <= 90) return { label: `OK (${age}s ago)`, cls: 'text-green-700', badge: 'bg-green-100 text-green-800' };
-    if (age <= 300) return { label: `Delayed (${age}s ago)`, cls: 'text-yellow-700', badge: 'bg-yellow-100 text-yellow-800' };
-    return { label: `Not running (${age}s ago)`, cls: 'text-red-700', badge: 'bg-red-100 text-red-800' };
-  }, [cronStatus]);
-
-  const cronCrontabLines = useMemo(() => {
-    const url = cronUrlWithParams;
-    if (!url) return '';
-    return `* * * * * curl -fsS "${url}" >/dev/null 2>&1`;
-  }, [cronUrlWithParams]);
+  }, []);
 
   return (
     <div className="p-8">
       <div className="mb-6">
-        <div className="flex items-center gap-2 mb-2">
-          <h1 className="text-gray-900">{t('Settings')}</h1>
-          {!isPro && <ProBadge />}
-        </div>
+        <h1 className="text-gray-900">{t('Settings')}</h1>
         <p className="text-gray-600">{t('Product import settings')}</p>
       </div>
-
-      {!isPro && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <Crown className="w-4 h-4 text-blue-600" />
-            </div>
-            <p className="text-sm text-blue-800">
-              {t('Scheduling and notification settings depend on the active plugin configuration.')}
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* General Settings */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
@@ -480,10 +362,7 @@ export function Settings() {
 
       {/* Performance Settings */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-gray-900">{t('Scheduler')}</h2>
-          {!isPro && <ProBadge />}
-        </div>
+        <h2 className="text-gray-900 mb-4">{t('Performance')}</h2>
         <div className="space-y-4">
           <div>
             <label className="flex items-center gap-3">
@@ -545,10 +424,7 @@ export function Settings() {
 
       {/* Notifications */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-gray-900">{t('Cron Settings')}</h2>
-          {!isPro && <ProBadge />}
-        </div>
+        <h2 className="text-gray-900 mb-4">{t('Notifications')}</h2>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">{t('Email for notifications')}</label>
@@ -640,122 +516,6 @@ export function Settings() {
               onChange={(e) => setSettings((s) => ({ ...s, debug: { ...s.debug, retention_days: Number(e.target.value || 0) } }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg md:w-1/2"
             />
-          </div>
-        </div>
-      </div>
-
-      {/* Scheduling Settings */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-gray-900">{t('Scheduled Imports')}</h2>
-          {!isPro && <ProBadge />}
-        </div>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">{t('Error threshold to stop (%)')}</label>
-            <input
-              type="number"
-              min="0"
-              max="100"
-              value={settings.scheduling.error_threshold_percent}
-              onChange={(e) => setSettings((s) => ({ ...s, scheduling: { ...s.scheduling, error_threshold_percent: Number(e.target.value || 0) } }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg md:w-1/2"
-            />
-            <p className="text-xs text-gray-500 mt-2">{t('If error percentage exceeds this value, import will be stopped')}</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex items-center justify-between gap-4 mb-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-gray-900">{t('System Cron')}</h2>
-              {!isPro && <ProBadge />}
-            </div>
-            <p className="text-sm text-gray-600">{t('Recommended for stable scheduled imports (as fast as manual)')}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => fetchCronStatus()}
-              disabled={cronLoading}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-gray-800 hover:bg-gray-50 flex items-center gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              {t('Refresh')}
-            </button>
-            <button
-              type="button"
-              onClick={() => runCronNow()}
-              disabled={cronLoading || !cronStatus?.token}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-gray-800 hover:bg-gray-50 flex items-center gap-2"
-              title={t('Run cron endpoint now and refresh status')}
-            >
-              <Play className="w-4 h-4" />
-              {t('Run now (test)')}
-            </button>
-            <button
-              type="button"
-              onClick={() => regenerateCronToken()}
-              disabled={cronLoading}
-              className="px-3 py-2 text-white rounded-lg"
-              style={{ backgroundColor: '#d20c0b' }}
-            >
-              {t('Regenerate token')}
-            </button>
-          </div>
-        </div>
-
-        {cronError ? (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 mb-4">{cronError}</div>
-        ) : null}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <div className="text-sm text-gray-600 mb-2">{t('Cron URL')}</div>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                readOnly
-                value={cronUrlWithParams}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-              />
-              <button
-                type="button"
-                onClick={() => copyText(cronUrlWithParams)}
-                disabled={!cronUrlWithParams}
-                className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                title={t('Copy')}
-              >
-                <Copy className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="mt-2 flex items-center gap-2">
-              <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs ${cronHealth.badge}`}>{cronHealth.label}</span>
-              <span className={`text-xs ${cronHealth.cls}`}>{t('Last ping:')} {cronStatus?.last_ping_human || '—'}</span>
-            </div>
-          </div>
-
-          <div>
-            <div className="text-sm text-gray-600 mb-2">{t('Crontab (every 60s)')}</div>
-            <div className="flex items-start gap-2">
-              <textarea
-                readOnly
-                value={cronCrontabLines}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm h-24"
-              />
-              <button
-                type="button"
-                onClick={() => copyText(cronCrontabLines)}
-                disabled={!cronCrontabLines}
-                className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                title={t('Copy')}
-              >
-                <Copy className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 mt-2">{t('These lines need to be added to cron on the server/hosting. The plugin cannot set up system cron automatically.')}</p>
           </div>
         </div>
       </div>

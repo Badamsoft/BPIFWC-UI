@@ -1,11 +1,10 @@
-import { Download, RotateCcw, FileText, AlertCircle, X, Calendar, Trash2, Square, Crown, ExternalLink } from 'lucide-react';
+import { Download, RotateCcw, FileText, AlertCircle, X, Calendar, Trash2, Square, ExternalLink } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { addCacheBuster, getWpNonce } from '../utils/api';
 import { t } from '../utils/i18n';
 import LogsModal from './LogsModal';
-import { ProBadge } from './ProBadge';
 
 interface HistoryItem {
   id: number;
@@ -27,7 +26,6 @@ interface ImportHistoryProps {
 }
 
 export function ImportHistory({ onNavigate }: ImportHistoryProps = {}) {
-  const isPro = Boolean((window as any).pifwcAdmin?.isPro);
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [startDate, endDate] = dateRange;
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -380,25 +378,9 @@ export function ImportHistory({ onNavigate }: ImportHistoryProps = {}) {
   return (
     <div className="p-8">
       <div className="mb-6">
-        <div className="flex items-center gap-2 mb-2">
-          <h1 className="text-gray-900">{t('Import History')}</h1>
-          {!isPro && <ProBadge />}
-        </div>
+        <h1 className="text-gray-900 mb-2">{t('Import History')}</h1>
         <p className="text-gray-600">{t('View import logs and history')}</p>
       </div>
-
-      {!isPro && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <Crown className="w-4 h-4 text-blue-600" />
-            </div>
-            <p className="text-sm text-blue-800">
-              {t('Advanced history filtering and automation tracking depend on the active plugin configuration.')}
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">

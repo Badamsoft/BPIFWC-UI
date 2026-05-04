@@ -2669,9 +2669,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:before {
   syntax: "*";
   inherits: false
 }
-
-@charset "UTF-8";
-
 /* npm-modules:https://esm.sh/react-datepicker/dist/react-datepicker.css */
 .react-datepicker__navigation-icon::before,
 .react-datepicker__year-read-view--down-arrow,
@@ -3431,28 +3428,5 @@ h2.react-datepicker__current-month {
 
  .pifwc-admin-wrap .pifwc-center-text {
    text-align: center !important;
- }
-
- .pifwc-upgrade-btn {
-   display: inline-flex !important;
-   align-items: center !important;
-   justify-content: center !important;
-   padding: 12px 22px !important;
-   font-size: 14px !important;
-   font-weight: 600 !important;
-   line-height: 1 !important;
-   border-radius: 10px !important;
-   background: #ef4444 !important;
-   color: #ffffff !important;
-   border: 0 !important;
-   cursor: pointer !important;
-   white-space: nowrap !important;
-   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10) !important;
-   transition: background-color 150ms ease, box-shadow 150ms ease !important;
- }
-
- .pifwc-upgrade-btn:hover {
-   background: #dc2626 !important;
-   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14) !important;
  }
 

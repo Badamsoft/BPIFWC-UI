@@ -8,17 +8,10 @@
 - ImportProfiles.tsx ✅
 - Settings.tsx ✅
 
-### Remaining (High Priority):
-1. **ScheduledImports.tsx** - Scheduled imports interface
-2. **ImportHistory.tsx** - Import history and logs
-3. **Sources.tsx** - Data sources management
-4. **License.tsx** - License management
-5. **HelpDocs.tsx** - Documentation
-6. **NewImport.tsx** - New import wizard (5 steps) - LARGE
-7. **FieldMapping.tsx** - Field mapping interface - LARGE  
-8. **VariationsTab.tsx** - Variations configuration - LARGE
-9. **GroupedTab.tsx** - Grouped products - LARGE
-10. **CategoryFields.tsx** - Category fields
+### Remaining work:
+- Review the remaining components for translation completeness.
+- Keep the FREE UI focused on the core import workflow and history views.
+- Update any newly added components when they land.
 
 ## Key Translation Pairs:
 

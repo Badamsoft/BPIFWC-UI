@@ -5,7 +5,6 @@ import {
   Link as LinkIcon, 
   X,
   Check,
-  AlertCircle,
   GripVertical,
   Plus,
   Trash2,
@@ -14,8 +13,6 @@ import {
 } from 'lucide-react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { VariationsTab } from './VariationsTab';
-import { GroupedTab } from './GroupedTab';
 import { DatePickerWithFooter } from './DatePickerWithFooter';
 import { CategoryFields } from './CategoryFields';
 import { addCacheBuster, getWpNonce } from '../utils/api';
@@ -35,8 +32,8 @@ interface FieldMappingProps {
   setAttributes?: Dispatch<SetStateAction<ProductAttribute[]>>;
   categories?: CategoryField[];
   setCategories?: Dispatch<SetStateAction<CategoryField[]>>;
-  productType?: 'simple' | 'variable' | 'grouped';
-  setProductType?: Dispatch<SetStateAction<'simple' | 'variable' | 'grouped'>>;
+  productType?: string;
+  setProductType?: Dispatch<SetStateAction<string>>;
   onApplyTemplateProfile?: (profileId: number) => Promise<void> | void;
   onUndoTemplateApply?: () => void;
   canUndoTemplateApply?: boolean;
@@ -90,14 +87,19 @@ interface CategoryField {
   level: number;
 }
 
+interface ProductTypeOption {
+  value: string;
+  label: string;
+}
+
 // Sample data for CSV template
 const generateSampleData = (rowIndex: number): SourceField[] => {
   const rows = [
-    { sku: '12345', title: 'Wireless Mouse Pro', price: '29.99', sale_price: '24.99', stock: '150', categories: 'Electronics, Accessories', description: 'High-quality wireless mouse', weight: '0.2', shipping_class: 'standard', upsells: '101, 102, 103', cross_sells: '201, 202', grouped_parent: '' },
-    { sku: 'WM-002', title: 'Mechanical Keyboard RGB', price: '89.99', sale_price: '79.99', stock: '75', categories: 'Electronics, Gaming', description: 'RGB mechanical keyboard', weight: '1.2', shipping_class: 'heavy', upsells: '104, 105', cross_sells: '203, 204', grouped_parent: '' },
-    { sku: 'UC-003', title: 'USB-C Cable 2m', price: '12.99', sale_price: '', stock: '300', categories: 'Electronics, Cables', description: 'Fast charging cable', weight: '0.05', shipping_class: 'light', upsells: '', cross_sells: '205, 206', grouped_parent: '' },
-    { sku: 'LS-004', title: 'Laptop Stand Aluminum', price: '45.99', sale_price: '39.99', stock: '120', categories: 'Office, Accessories', description: 'Ergonomic laptop stand', weight: '0.8', shipping_class: 'standard', upsells: '106', cross_sells: '207', grouped_parent: '500' },
-    { sku: 'WC-005', title: 'Webcam HD 1080p', price: '65.99', sale_price: '', stock: '90', categories: 'Electronics, Video', description: 'Full HD webcam', weight: '0.3', shipping_class: 'express', upsells: '107, 108', cross_sells: '', grouped_parent: '' },
+    { sku: '12345', title: 'Wireless Mouse Pro', price: '29.99', sale_price: '24.99', stock: '150', categories: 'Electronics, Accessories', description: 'High-quality wireless mouse', weight: '0.2', shipping_class: 'standard', upsells: '101, 102, 103', cross_sells: '201, 202' },
+    { sku: 'WM-002', title: 'Mechanical Keyboard RGB', price: '89.99', sale_price: '79.99', stock: '75', categories: 'Electronics, Gaming', description: 'RGB mechanical keyboard', weight: '1.2', shipping_class: 'heavy', upsells: '104, 105', cross_sells: '203, 204' },
+    { sku: 'UC-003', title: 'USB-C Cable 2m', price: '12.99', sale_price: '', stock: '300', categories: 'Electronics, Cables', description: 'Fast charging cable', weight: '0.05', shipping_class: 'light', upsells: '', cross_sells: '205, 206' },
+    { sku: 'LS-004', title: 'Laptop Stand Aluminum', price: '45.99', sale_price: '39.99', stock: '120', categories: 'Office, Accessories', description: 'Ergonomic laptop stand', weight: '0.8', shipping_class: 'standard', upsells: '106', cross_sells: '207' },
+    { sku: 'WC-005', title: 'Webcam HD 1080p', price: '65.99', sale_price: '', stock: '90', categories: 'Electronics, Video', description: 'Full HD webcam', weight: '0.3', shipping_class: 'express', upsells: '107, 108', cross_sells: '' },
   ];
 
   const row = rows[rowIndex % rows.length];
@@ -114,13 +116,15 @@ function AttributeRow({
   attribute, 
   index, 
   productType, 
+  supportsVariationAttributes,
   onMove, 
   onUpdate, 
   onRemove 
 }: { 
   attribute: ProductAttribute; 
   index: number;
-  productType: 'simple' | 'variable' | 'grouped';
+  productType: string;
+  supportsVariationAttributes: boolean;
   onMove: (dragIndex: number, hoverIndex: number) => void;
   onUpdate: (id: string, field: keyof ProductAttribute, value: any) => void;
   onRemove: (id: string) => void;
@@ -221,15 +225,17 @@ function AttributeRow({
 
         {/* Checkboxes */}
         <div className="flex items-center gap-4 text-xs">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={attribute.inVariations}
-              onChange={(e) => onUpdate(attribute.id, 'inVariations', e.target.checked)}
-              className="attribute-checkbox"
-            />
-            <span className="text-gray-700">Variations</span>
-          </label>
+          {supportsVariationAttributes && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={attribute.inVariations}
+                onChange={(e) => onUpdate(attribute.id, 'inVariations', e.target.checked)}
+                className="attribute-checkbox"
+              />
+              <span className="text-gray-700">Variations</span>
+            </label>
+          )}
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -477,10 +483,15 @@ function FieldMappingContent({
 }: FieldMappingProps) {
   
   const [currentRow, setCurrentRow] = useState(0);
-  const [localProductType, setLocalProductType] = useState<'simple' | 'variable' | 'grouped'>('simple');
+  const [localProductType, setLocalProductType] = useState<string>('simple');
   const productType = propProductType ?? localProductType;
   const setProductType = propSetProductType ?? setLocalProductType;
-  const isPro = Boolean((window as any).pifwcAdmin?.isPro);
+  const importUi = (window as any).pifwcAdmin?.importUi || {};
+  const productTypeOptions: ProductTypeOption[] = Array.isArray(importUi.productTypes) && importUi.productTypes.length > 0
+    ? importUi.productTypes
+    : [{ value: 'simple', label: 'Simple Product' }];
+  const allowedProductTypes = new Set(productTypeOptions.map((option) => option.value));
+  const supportsVariationAttributes = Boolean(importUi.supportsVariationAttributes);
   
   // Use mappings from props if available, otherwise use local state
   const mappings = propMappings || [];
@@ -491,23 +502,15 @@ function FieldMappingContent({
   const setAttributes = propSetAttributes || (() => {});
   
   const [sourceFields, setSourceFields] = useState<SourceField[]>([]);
-  const [activeTab, setActiveTab] = useState<'general' | 'inventory' | 'shipping' | 'linked' | 'attributes' | 'variations' | 'grouped'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'inventory' | 'shipping' | 'linked' | 'attributes'>('general');
 
   useEffect(() => {
-    if (!isPro && (productType === 'variable' || productType === 'grouped')) {
-      setProductType('simple');
+    if (!allowedProductTypes.has(productType)) {
+      setProductType(productTypeOptions[0]?.value || 'simple');
     }
-  }, [isPro, productType, setProductType]);
+  }, [allowedProductTypes, productType, productTypeOptions, setProductType]);
 
   useEffect(() => {
-    if (productType === 'variable') {
-      setActiveTab('variations');
-      return;
-    }
-    if (productType === 'grouped') {
-      setActiveTab('grouped');
-      return;
-    }
     setActiveTab('general');
   }, [productType]);
   
@@ -540,8 +543,6 @@ function FieldMappingContent({
     const fields = generateSourceFields();
     setSourceFields(fields);
   }, [currentRow, previewData]);
-  const [variationModel, setVariationModel] = useState<'classic' | 'no-parent-sku' | 'auto-sku' | 'shared-price'>('classic');
-  const [groupedModel, setGroupedModel] = useState<'classic' | 'no-parent-sku' | 'auto-create' | 'bundle'>('classic');
   const [postStatus, setPostStatus] = useState<string>('published');
   const [postDates, setPostDates] = useState<string>('as-specified');
   const [asSpecifiedDate, setAsSpecifiedDate] = useState<Date | null>(new Date());
@@ -682,16 +683,7 @@ function FieldMappingContent({
     // Linked Products Section
     { id: 'upsells', label: 'Upsells', type: 'text', placeholder: 'Product IDs (comma separated)', required: false, section: 'linked' },
     { id: 'cross_sells', label: 'Cross-sells', type: 'text', placeholder: 'Product IDs (comma separated)', required: false, section: 'linked' },
-    { id: 'grouped_products', label: 'Grouped Products', type: 'text', placeholder: 'Parent product ID', required: false, section: 'linked' },
   ];
-
-  // Add variable product fields
-  if (productType === 'variable') {
-    targetFields.push(
-      { id: 'variation_sku', label: 'Variation SKU', type: 'text', placeholder: 'Variation SKU pattern', required: false, section: 'variations' },
-      { id: 'variation_price', label: 'Variation Price', type: 'number', placeholder: 'Variation price', required: false, section: 'variations' },
-    );
-  }
 
 
   const handleDrop = (sourceField: SourceField, targetField: TargetField) => {
@@ -799,7 +791,7 @@ function FieldMappingContent({
         id: newId, 
         name: '', 
         values: '', 
-        inVariations: productType === 'variable', 
+        inVariations: supportsVariationAttributes && productType === 'variable', 
         isVisible: true, 
         isTaxonomy: false, 
         autoCreateTerms: true 
@@ -890,40 +882,19 @@ function FieldMappingContent({
           <div>
             <label className="block text-sm text-gray-600 mb-2">Product Type</label>
             <div className="flex gap-2">
-          <button
-            onClick={() => setProductType('simple')}
-            className={`px-4 py-2 rounded-lg border transition-colors ${
-              productType === 'simple'
-                ? 'bg-red-500 text-white border-red-500'
-                : 'bg-white text-gray-700 border-gray-300 hover:border-red-500'
-            }`}
-          >
-            Simple Product
-          </button>
-          {isPro && (
-            <>
-          <button
-            onClick={() => setProductType('variable')}
-            className={`px-4 py-2 rounded-lg border transition-colors ${
-              productType === 'variable'
-                ? 'bg-red-500 text-white border-red-500'
-                : 'bg-white text-gray-700 border-gray-300 hover:border-red-500'
-            }`}
-          >
-            Variable Product
-          </button>
-          <button
-            onClick={() => setProductType('grouped')}
-            className={`px-4 py-2 rounded-lg border transition-colors ${
-              productType === 'grouped'
-                ? 'bg-red-500 text-white border-red-500'
-                : 'bg-white text-gray-700 border-gray-300 hover:border-red-500'
-            }`}
-          >
-            Grouped Product
-          </button>
-            </>
-          )}
+              {productTypeOptions.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => setProductType(option.value)}
+                  className={`px-4 py-2 rounded-lg border transition-colors ${
+                    productType === option.value
+                      ? 'bg-red-500 text-white border-red-500'
+                      : 'bg-white text-gray-700 border-gray-300 hover:border-red-500'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -1150,9 +1121,9 @@ function FieldMappingContent({
                         onChange={(e) => setProductType(e.target.value as any)}
                         className="px-3 py-1 border border-gray-300 rounded text-sm"
                       >
-                        <option value="simple">Simple Product</option>
-                        <option value="variable">Variable Product</option>
-                        <option value="grouped">Grouped product</option>
+                        {productTypeOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
                       </select>
                       <button className="text-gray-500 hover:text-gray-700">
                         <span className="text-sm">ⓘ</span>
@@ -1199,22 +1170,6 @@ function FieldMappingContent({
                       >
                         Attributes
                       </button>
-                      {productType === 'variable' && (
-                        <button
-                          className={`px-3 py-2 ${activeTab === 'variations' ? 'bg-white border-t-2 border-red-500' : 'hover:bg-white'}`}
-                          onClick={() => setActiveTab('variations')}
-                        >
-                          Variations
-                        </button>
-                      )}
-                      {productType === 'grouped' && (
-                        <button
-                          className={`px-3 py-2 ${activeTab === 'grouped' ? 'bg-white border-t-2 border-red-500' : 'hover:bg-white'}`}
-                          onClick={() => setActiveTab('grouped')}
-                        >
-                          Models
-                        </button>
-                      )}
                     </div>
 
                     {/* Tab Content - General */}
@@ -1453,26 +1408,6 @@ function FieldMappingContent({
                             />
                           </div>
 
-                          {/* Grouped Products Section */}
-                          <div>
-                            <div className="mb-2">
-                              <label className="block text-sm text-gray-700 mb-1">
-                                Grouped Products
-                              </label>
-                              <p className="text-xs text-gray-500">
-                                Parent product ID for grouping (only for grouped products)
-                              </p>
-                            </div>
-                            <DropZoneField
-                              field={targetFields.find(f => f.id === 'grouped_products')!}
-                              mappedSourceField={getMappedSourceField('grouped_products')}
-                              manualValue={getManualValue('grouped_products')}
-                              onDrop={handleDrop}
-                              onRemove={handleRemoveMapping}
-                              onManualChange={handleManualValueChange}
-                            />
-                          </div>
-
                           {/* Info Box */}
                           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
                             <div className="flex items-start gap-2">
@@ -1529,6 +1464,7 @@ function FieldMappingContent({
                               attribute={attr}
                               index={index}
                               productType={productType}
+                              supportsVariationAttributes={supportsVariationAttributes}
                               onMove={moveAttribute}
                               onUpdate={updateAttribute}
                               onRemove={removeAttribute}
@@ -1543,390 +1479,6 @@ function FieldMappingContent({
                             <Plus className="w-4 h-4" />
                             Add Attribute
                           </button>
-                        </div>
-                      )}
-
-                      {activeTab === 'variations' && (
-                        <VariationsTab
-                          variationModel={variationModel}
-                          setVariationModel={setVariationModel}
-                          DropZoneField={DropZoneField}
-                          getMappedSourceField={getMappedSourceField}
-                          getManualValue={getManualValue}
-                          handleDrop={handleDrop}
-                          handleRemoveMapping={handleRemoveMapping}
-                          handleManualValueChange={handleManualValueChange}
-                        />
-                      )}
-
-                      {activeTab === 'grouped' && (
-                        <GroupedTab
-                          groupedModel={groupedModel}
-                          setGroupedModel={setGroupedModel}
-                          DropZoneField={DropZoneField}
-                          getMappedSourceField={getMappedSourceField}
-                          getManualValue={getManualValue}
-                          handleDrop={handleDrop}
-                          handleRemoveMapping={handleRemoveMapping}
-                          handleManualValueChange={handleManualValueChange}
-                        />
-                      )}
-
-                      {false && activeTab === 'variations' && (
-                        <div className="space-y-6">
-                          {/* Model Selection */}
-                          <div>
-                            <h3 className="text-sm text-gray-900 mb-3">Select variable product model</h3>
-                            <div className="grid grid-cols-2 gap-3">
-                              {/* Model 1: Classic */}
-                              <button
-                                onClick={() => setVariationModel('classic')}
-                                className={`p-4 border-2 rounded-lg text-left transition-all ${
-                                  variationModel === 'classic'
-                                    ? 'border-red-500 bg-red-50'
-                                    : 'border-gray-300 hover:border-red-300'
-                                }`}
-                              >
-                                <div className="flex items-start gap-2 mb-2">
-                                  <Check className={`w-5 h-5 mt-0.5 ${variationModel === 'classic' ? 'text-red-500' : 'text-gray-300'}`} />
-                                  <div className="flex-1">
-                                    <h4 className="text-sm text-gray-900 mb-1">1. Classic Model</h4>
-                                    <span className="inline-block px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
-                                      RECOMMENDED
-                                    </span>
-                                  </div>
-                                </div>
-                                <ul className="text-xs text-gray-600 space-y-1 ml-7">
-                                  <li>✅ Parent SKU</li>
-                                  <li>✅ Variation SKUs</li>
-                                  <li>✅ Attributes at parent level</li>
-                                  <li>✅ Variation images optional</li>
-                                </ul>
-                              </button>
-
-                              {/* Model 2: No Parent SKU */}
-                              <button
-                                onClick={() => setVariationModel('no-parent-sku')}
-                                className={`p-4 border-2 rounded-lg text-left transition-all ${
-                                  variationModel === 'no-parent-sku'
-                                    ? 'border-red-500 bg-red-50'
-                                    : 'border-gray-300 hover:border-red-300'
-                                }`}
-                              >
-                                <div className="flex items-start gap-2 mb-2">
-                                  <Check className={`w-5 h-5 mt-0.5 ${variationModel === 'no-parent-sku' ? 'text-red-500' : 'text-gray-300'}`} />
-                                  <div className="flex-1">
-                                    <h4 className="text-sm text-gray-900 mb-1">2. No Parent SKU</h4>
-                                    <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">
-                                      Identification by name
-                                    </span>
-                                  </div>
-                                </div>
-                                <ul className="text-xs text-gray-600 space-y-1 ml-7">
-                                  <li>❌ Parent SKU absent</li>
-                                  <li>✅ Variation SKUs</li>
-                                  <li>✅ Linked by product name</li>
-                                  <li>✅ Variation images optional</li>
-                                </ul>
-                              </button>
-
-                              {/* Model 3: Auto SKU */}
-                              <button
-                                onClick={() => setVariationModel('auto-sku')}
-                                className={`p-4 border-2 rounded-lg text-left transition-all ${
-                                  variationModel === 'auto-sku'
-                                    ? 'border-red-500 bg-red-50'
-                                    : 'border-gray-300 hover:border-red-300'
-                                }`}
-                              >
-                                <div className="flex items-start gap-2 mb-2">
-                                  <Check className={`w-5 h-5 mt-0.5 ${variationModel === 'auto-sku' ? 'text-red-500' : 'text-gray-300'}`} />
-                                  <div className="flex-1">
-                                    <h4 className="text-sm text-gray-900 mb-1">3. Auto-generate SKU</h4>
-                                    <span className="inline-block px-2 py-0.5 bg-red-50 text-red-600 text-xs rounded border border-red-200">
-                                      SKU created automatically
-                                    </span>
-                                  </div>
-                                </div>
-                                <ul className="text-xs text-gray-600 space-y-1 ml-7">
-                                  <li>✅ Parent SKU</li>
-                                  <li>🔄 Variation SKU generated</li>
-                                  <li>✅ Formula: PARENT-ATTR1-ATTR2</li>
-                                  <li>✅ Variation images optional</li>
-                                </ul>
-                              </button>
-
-                              {/* Model 4: Shared Price */}
-                              <button
-                                onClick={() => setVariationModel('shared-price')}
-                                className={`p-4 border-2 rounded-lg text-left transition-all ${
-                                  variationModel === 'shared-price'
-                                    ? 'border-red-500 bg-red-50'
-                                    : 'border-gray-300 hover:border-red-300'
-                                }`}
-                              >
-                                <div className="flex items-start gap-2 mb-2">
-                                  <Check className={`w-5 h-5 mt-0.5 ${variationModel === 'shared-price' ? 'text-red-500' : 'text-gray-300'}`} />
-                                  <div className="flex-1">
-                                    <h4 className="text-sm text-gray-900 mb-1">4. Shared Price</h4>
-                                    <span className="inline-block px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded">
-                                      Price at parent level
-                                    </span>
-                                  </div>
-                                </div>
-                                <ul className="text-xs text-gray-600 space-y-1 ml-7">
-                                  <li>✅ Parent SKU</li>
-                                  <li>✅ Variation SKUs</li>
-                                  <li>💰 Price only at parent</li>
-                                  <li>✅ Variation images optional</li>
-                                </ul>
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Model Details */}
-                          <div className="bg-gray-50 border border-gray-300 rounded-lg p-4">
-                            {variationModel === 'classic' && (
-                              <div>
-                                <h4 className="text-sm text-gray-900 mb-3">Model 1: Classic (Recommended)</h4>
-                                <p className="text-xs text-gray-600 mb-4">
-                                  Reference model for import. Full compatibility with ERP, warehouse, API. Best model for large catalogs.
-                                </p>
-                                
-                                {/* Example Table */}
-                                <div className="bg-white border border-gray-300 rounded overflow-hidden">
-                                  <div className="bg-gray-100 px-3 py-2 border-b border-gray-300">
-                                    <h5 className="text-xs text-gray-700">Example data structure:</h5>
-                                  </div>
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-xs">
-                                      <thead>
-                                        <tr className="bg-gray-50 border-b border-gray-300">
-                                          <th className="px-3 py-2 text-left text-gray-700">Parent SKU</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Parent Name</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Variation SKU</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Color</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Size</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Price</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Stock</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Image</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        <tr className="border-b border-gray-200">
-                                          <td className="px-3 py-2 text-gray-900">TSHIRT-01</td>
-                                          <td className="px-3 py-2 text-gray-900">T-Shirt</td>
-                                          <td className="px-3 py-2 text-gray-900">TSHIRT-01-R-M</td>
-                                          <td className="px-3 py-2 text-gray-600">Red</td>
-                                          <td className="px-3 py-2 text-gray-600">M</td>
-                                          <td className="px-3 py-2 text-gray-600">25</td>
-                                          <td className="px-3 py-2 text-gray-600">10</td>
-                                          <td className="px-3 py-2 text-gray-400">optional</td>
-                                        </tr>
-                                        <tr className="border-b border-gray-200">
-                                          <td className="px-3 py-2 text-gray-900">TSHIRT-01</td>
-                                          <td className="px-3 py-2 text-gray-900">T-Shirt</td>
-                                          <td className="px-3 py-2 text-gray-900">TSHIRT-01-R-L</td>
-                                          <td className="px-3 py-2 text-gray-600">Red</td>
-                                          <td className="px-3 py-2 text-gray-600">L</td>
-                                          <td className="px-3 py-2 text-gray-600">27</td>
-                                          <td className="px-3 py-2 text-gray-600">8</td>
-                                          <td className="px-3 py-2 text-gray-400">optional</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {variationModel === 'no-parent-sku' && (
-                              <div>
-                                <h4 className="text-sm text-gray-900 mb-3">Model 2: No Parent SKU</h4>
-                                <p className="text-xs text-gray-600 mb-4">
-                                  Often used by suppliers. Suitable for import without parent SKU. Requires strict product name uniqueness.
-                                </p>
-                                
-                                <div className="bg-white border border-gray-300 rounded overflow-hidden">
-                                  <div className="bg-gray-100 px-3 py-2 border-b border-gray-300">
-                                    <h5 className="text-xs text-gray-700">Example data structure:</h5>
-                                  </div>
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-xs">
-                                      <thead>
-                                        <tr className="bg-gray-50 border-b border-gray-300">
-                                          <th className="px-3 py-2 text-left text-gray-700">Parent SKU</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Parent Name</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Variation SKU</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Color</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Size</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Price</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Stock</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Image</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        <tr className="border-b border-gray-200">
-                                          <td className="px-3 py-2 text-gray-400">—</td>
-                                          <td className="px-3 py-2 text-gray-900">Sneakers Air</td>
-                                          <td className="px-3 py-2 text-gray-900">AIR-R-42</td>
-                                          <td className="px-3 py-2 text-gray-600">Red</td>
-                                          <td className="px-3 py-2 text-gray-600">42</td>
-                                          <td className="px-3 py-2 text-gray-600">99</td>
-                                          <td className="px-3 py-2 text-gray-600">5</td>
-                                          <td className="px-3 py-2 text-gray-400">optional</td>
-                                        </tr>
-                                        <tr className="border-b border-gray-200">
-                                          <td className="px-3 py-2 text-gray-400">—</td>
-                                          <td className="px-3 py-2 text-gray-900">Sneakers Air</td>
-                                          <td className="px-3 py-2 text-gray-900">AIR-B-43</td>
-                                          <td className="px-3 py-2 text-gray-600">Black</td>
-                                          <td className="px-3 py-2 text-gray-600">43</td>
-                                          <td className="px-3 py-2 text-gray-600">99</td>
-                                          <td className="px-3 py-2 text-gray-600">7</td>
-                                          <td className="px-3 py-2 text-gray-400">optional</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {variationModel === 'auto-sku' && (
-                              <div>
-                                <h4 className="text-sm text-gray-900 mb-3">Model 3: Auto-generate Variation SKU</h4>
-                                <p className="text-xs text-gray-600 mb-4">
-                                  Variation SKU generated automatically based on attributes. Convenient for quick import.
-                                </p>
-                                
-                                {/* Formula */}
-                                <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4">
-                                  <h5 className="text-xs text-blue-900 mb-2">Formula for auto-generating SKU:</h5>
-                                  <code className="text-xs text-blue-800">
-                                    PARENT_SKU + "-" + Attribute_Abbreviations
-                                  </code>
-                                  <div className="mt-2 text-xs text-blue-700">
-                                    Example: <strong>TSHIRT-01-R-XL</strong> (where R = Red, XL = XL)
-                                  </div>
-                                </div>
-                                
-                                <div className="bg-white border border-gray-300 rounded overflow-hidden">
-                                  <div className="bg-gray-100 px-3 py-2 border-b border-gray-300">
-                                    <h5 className="text-xs text-gray-700">Example data structure:</h5>
-                                  </div>
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-xs">
-                                      <thead>
-                                        <tr className="bg-gray-50 border-b border-gray-300">
-                                          <th className="px-3 py-2 text-left text-gray-700">Parent SKU</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Parent Name</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Auto SKU</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Color</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Size</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Price</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Stock</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Image</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        <tr className="border-b border-gray-200">
-                                          <td className="px-3 py-2 text-gray-900">TSHIRT-01</td>
-                                          <td className="px-3 py-2 text-gray-900">T-Shirt</td>
-                                          <td className="px-3 py-2 text-purple-600">TSHIRT-01-R-M</td>
-                                          <td className="px-3 py-2 text-gray-600">Red</td>
-                                          <td className="px-3 py-2 text-gray-600">M</td>
-                                          <td className="px-3 py-2 text-gray-600">25</td>
-                                          <td className="px-3 py-2 text-gray-600">10</td>
-                                          <td className="px-3 py-2 text-gray-400">optional</td>
-                                        </tr>
-                                        <tr className="border-b border-gray-200">
-                                          <td className="px-3 py-2 text-gray-900">TSHIRT-01</td>
-                                          <td className="px-3 py-2 text-gray-900">T-Shirt</td>
-                                          <td className="px-3 py-2 text-purple-600">TSHIRT-01-R-XL</td>
-                                          <td className="px-3 py-2 text-gray-600">Red</td>
-                                          <td className="px-3 py-2 text-gray-600">XL</td>
-                                          <td className="px-3 py-2 text-gray-600">27</td>
-                                          <td className="px-3 py-2 text-gray-600">6</td>
-                                          <td className="px-3 py-2 text-gray-400">optional</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {variationModel === 'shared-price' && (
-                              <div>
-                                <h4 className="text-sm text-gray-900 mb-3">Model 4: Shared Price at Parent Level</h4>
-                                <p className="text-xs text-gray-600 mb-4">
-                                  Convenient for fashion catalogs. Price inherited from parent product.
-                                </p>
-                                
-                                <div className="bg-white border border-gray-300 rounded overflow-hidden">
-                                  <div className="bg-gray-100 px-3 py-2 border-b border-gray-300">
-                                    <h5 className="text-xs text-gray-700">Example data structure:</h5>
-                                  </div>
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-xs">
-                                      <thead>
-                                        <tr className="bg-gray-50 border-b border-gray-300">
-                                          <th className="px-3 py-2 text-left text-gray-700">Parent SKU</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Parent Name</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Variation SKU</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Color</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Size</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Parent Price</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Stock</th>
-                                          <th className="px-3 py-2 text-left text-gray-700">Image</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        <tr className="border-b border-gray-200">
-                                          <td className="px-3 py-2 text-gray-900">JACKET-01</td>
-                                          <td className="px-3 py-2 text-gray-900">Jacket</td>
-                                          <td className="px-3 py-2 text-gray-900">JACKET-01-B-M</td>
-                                          <td className="px-3 py-2 text-gray-600">Black</td>
-                                          <td className="px-3 py-2 text-gray-600">M</td>
-                                          <td className="px-3 py-2 text-orange-600">120</td>
-                                          <td className="px-3 py-2 text-gray-600">4</td>
-                                          <td className="px-3 py-2 text-gray-400">optional</td>
-                                        </tr>
-                                        <tr className="border-b border-gray-200">
-                                          <td className="px-3 py-2 text-gray-900">JACKET-01</td>
-                                          <td className="px-3 py-2 text-gray-900">Jacket</td>
-                                          <td className="px-3 py-2 text-gray-900">JACKET-01-B-L</td>
-                                          <td className="px-3 py-2 text-gray-600">Black</td>
-                                          <td className="px-3 py-2 text-gray-600">L</td>
-                                          <td className="px-3 py-2 text-orange-600">120</td>
-                                          <td className="px-3 py-2 text-gray-600">6</td>
-                                          <td className="px-3 py-2 text-gray-400">optional</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Validation Rules */}
-                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                            <h4 className="text-sm text-gray-900 mb-2 flex items-center gap-2">
-                              <AlertCircle className="w-4 h-4 text-yellow-600" />
-                              Required rules for all models
-                            </h4>
-                            <ul className="text-xs text-gray-700 space-y-1 ml-6">
-                              <li>✅ Attribute combination uniqueness check</li>
-                              <li>✅ SKU uniqueness check (including auto-generation)</li>
-                              <li>✅ Support for images at parent and variation level</li>
-                              <li>✅ Individual stock for each variation</li>
-                              <li>✅ Validation of required attributes</li>
-                              <li>✅ Validation of name and SKU conflicts</li>
-                              <li>✅ Duplicate variation check</li>
-                            </ul>
-                          </div>
                         </div>
                       )}
                     </div>

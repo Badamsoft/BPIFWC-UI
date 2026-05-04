@@ -2,10 +2,11 @@ import {
   LayoutDashboard, 
   Upload, 
   FolderOpen, 
-  Clock, 
+  Clock,
   History, 
-  Database, 
+  Database,
   Settings, 
+  Key,
   HelpCircle 
 } from 'lucide-react';
 import { t } from '../utils/i18n';
@@ -21,13 +22,10 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
     ? `${(window as any).pifwcAdmin.pluginUrl}assets/images/badamsoft_logo.png`
     : '';
   const helpDocsUrl = 'https://badamsoft.com/documentation/?doc_product=importer&cat=importer-guide';
-  
+
   // Get dynamic plugin name and version
-  const isPro = !!(window as any).pifwcAdmin?.isPro;
   const basePluginName = (window as any).pifwcAdmin?.pluginName || 'Product Importer for WooCommerce';
-  const pluginName = isPro && !basePluginName.includes('PRO')
-    ? `${basePluginName} PRO`
-    : basePluginName;
+  const pluginName = basePluginName;
   const version = (window as any).pifwcAdmin?.version || '2.0.0';
 
   const handleMenuClick = (item: any) => {
@@ -42,14 +40,10 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
     { id: 'dashboard', label: t('Import Dashboard'), icon: LayoutDashboard, free: true },
     { id: 'new-import', label: t('New Import'), icon: Upload, free: true },
     { id: 'profiles', label: t('Import Profiles'), icon: FolderOpen, free: true },
-    { id: 'scheduled-imports', label: t('Scheduled Imports'), icon: Clock, free: false },
     { id: 'history', label: t('Import History & Logs'), icon: History, free: true },
-    { id: 'sources', label: t('Sources'), icon: Database, free: false },
     { id: 'settings', label: t('Settings'), icon: Settings, free: true },
     { id: 'help', label: t('Help / Docs'), icon: HelpCircle, free: true },
   ];
-
-  const visibleMenuItems = isPro ? menuItems : menuItems.filter((item) => item.free);
 
   return (
     <div className="w-64 bg-white h-screen flex flex-col border-r border-gray-200">
@@ -58,11 +52,11 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
           {logoUrl && <img src={logoUrl} alt="Badamsoft Logo" className="w-full h-auto" />}
         </div>
         <h2 className="text-gray-900">{pluginName} {version}</h2>
-        <p className="text-xs text-gray-500">{t('Import your products with advanced filters and automation')}</p>
+        <p className="text-xs text-gray-500">{t('Import your products from CSV files')}</p>
       </div>
       
       <nav className="flex-1 overflow-y-auto py-4">
-        {visibleMenuItems.map((item) => {
+        {menuItems.map((item) => {
           const Icon = item.icon;
           return (
             <button
@@ -80,7 +74,7 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
           );
         })}
       </nav>
-      
+
     </div>
   );
 }

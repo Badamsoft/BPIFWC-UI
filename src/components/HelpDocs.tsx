@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Video, FileText, Code, MessageCircle, Download, ExternalLink } from 'lucide-react';
 import { addCacheBuster, getWpNonce } from '../utils/api';
+import { t } from '../utils/i18n';
 
 export function HelpDocs() {
   const quickStartSteps = [
@@ -92,7 +93,6 @@ export function HelpDocs() {
     { title: t('Quick Start - First Import'), duration: '5:30' },
     { title: t('Field Mapping Configuration'), duration: '8:15' },
     { title: t('Creating and Using Profiles'), duration: '6:45' },
-    { title: t('Scheduled Imports (CRON)'), duration: '10:20' },
     { title: t('Working with FTP and SFTP'), duration: '12:00' },
   ];
 

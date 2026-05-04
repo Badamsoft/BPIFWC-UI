@@ -55,7 +55,7 @@ export function ImportProgress({ jobId, onComplete, onError, onProgress, onAbort
     const unwrapped = raw?.data ?? raw;
     const processed = toNumber(
       unwrapped?.processed ??
-        (toNumber(unwrapped?.added) + toNumber(unwrapped?.updated) + toNumber(unwrapped?.skipped) + toNumber(unwrapped?.errors))
+        (toNumber(unwrapped?.added) + toNumber(unwrapped?.updated) + toNumber(unwrapped?.skipped))
     );
 
     return {
@@ -472,6 +472,7 @@ export function ImportProgress({ jobId, onComplete, onError, onProgress, onAbort
   }
 
   const isComplete = progress.status === 'completed' || progress.status === 'completed_with_errors';
+  const isCompletedWithErrors = progress.status === 'completed_with_errors';
   const hasFailed = progress.status === 'failed' || progress.status === 'aborted';
   const isRunning = !isComplete && !hasFailed;
 
@@ -635,11 +636,11 @@ export function ImportProgress({ jobId, onComplete, onError, onProgress, onAbort
 
       {/* Status Message */}
       {isComplete && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-          <div className="flex items-center gap-2 text-green-700">
-            <CheckCircle className="w-4 h-4" />
+        <div className={`${isCompletedWithErrors ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'} border rounded-lg p-3`}>
+          <div className={`flex items-center gap-2 ${isCompletedWithErrors ? 'text-yellow-700' : 'text-green-700'}`}>
+            {isCompletedWithErrors ? <AlertCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
             <span className="text-sm font-medium">
-              Import completed successfully!
+              {isCompletedWithErrors ? 'Import completed with errors. Check logs for details.' : 'Import completed successfully!'}
             </span>
           </div>
         </div>

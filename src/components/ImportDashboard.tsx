@@ -1,7 +1,7 @@
 import { ImportProgress } from './ImportProgress';
 import { addCacheBuster, getWpNonce } from '../utils/api';
 import { StatsCard } from './StatsCard';
-import { Clock, FolderOpen, Calendar, AlertTriangle, Plus, FileText, History as HistoryIcon } from 'lucide-react';
+import { Clock, FolderOpen, AlertTriangle, Plus, FileText, History as HistoryIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { t } from '../utils/i18n';
 
@@ -26,14 +26,9 @@ type DashboardStats = {
   lastImportSubtitle: string;
   activeProfilesCount: number;
   scheduledProfilesCount: number;
-  scheduledImportsCount: number;
-  nextRunLabel: string;
   errorsLast24h: number;
   erroredRunsLast24h: number;
   queueCount: number;
-  licenseLabel: string;
-  cronLabel: string;
-  cronOk: boolean;
   queueOk: boolean;
 };
 
@@ -41,20 +36,14 @@ export function ImportDashboard({ onNavigate }: ImportDashboardProps) {
   const [recentImports, setRecentImports] = useState<RecentImport[]>([]);
   const [loading, setLoading] = useState(true);
   const [profiles, setProfiles] = useState<ProfileItem[]>([]);
-  const isPro = !!(window as any).pifwcAdmin?.isPro;
   const [stats, setStats] = useState<DashboardStats>({
     lastImportLabel: '-',
     lastImportSubtitle: '',
     activeProfilesCount: 0,
     scheduledProfilesCount: 0,
-    scheduledImportsCount: 0,
-    nextRunLabel: '-',
     errorsLast24h: 0,
     erroredRunsLast24h: 0,
     queueCount: 0,
-    licenseLabel: '-',
-    cronLabel: '-',
-    cronOk: true,
     queueOk: true,
   });
 
@@ -63,37 +52,16 @@ export function ImportDashboard({ onNavigate }: ImportDashboardProps) {
     const loadData = async () => {
       try {
         setLoading(true);
-        const isPro = !!(window as any).pifwcAdmin?.isPro;
         const nonce = (window as any).wpApiSettings?.nonce || (window as any).pifwcAdmin?.nonce || '';
         const restUrl = (window as any).pifwcAdmin?.restUrl || '/wp-json/pifwc/v1/';
 
-        const emptySchedulesRes = {
-          ok: true,
-          json: async () => ({ data: { schedules: [] } }),
-        } as unknown as Response;
-
-        const emptyLicenseRes = {
-          ok: true,
-          json: async () => ({ data: { is_pro: false } }),
-        } as unknown as Response;
-
-        const [profilesRes, jobsRes, schedulesRes, healthRes, licenseRes] = await Promise.all([
+        const [profilesRes, jobsRes] = await Promise.all([
           fetch(addCacheBuster(`${restUrl}profiles?limit=1000`), { headers: { 'X-WP-Nonce': nonce } }),
           fetch(`${restUrl}import/jobs?limit=50`, { headers: { 'X-WP-Nonce': nonce } }),
-          isPro
-            ? fetch(`${restUrl}schedules`, { headers: { 'X-WP-Nonce': nonce } })
-            : Promise.resolve(emptySchedulesRes),
-          fetch(`${restUrl}health`, { headers: { 'X-WP-Nonce': nonce } }),
-          isPro
-            ? fetch(`${restUrl}license/info`, { headers: { 'X-WP-Nonce': nonce } })
-            : Promise.resolve(emptyLicenseRes),
         ]);
 
         const profilesJson = profilesRes.ok ? await profilesRes.json().catch(() => null) : null;
         const jobsJson = jobsRes.ok ? await jobsRes.json().catch(() => null) : null;
-        const schedulesJson = schedulesRes.ok ? await schedulesRes.json().catch(() => null) : null;
-        const healthJson = healthRes.ok ? await healthRes.json().catch(() => null) : null;
-        const licenseJson = licenseRes.ok ? await licenseRes.json().catch(() => null) : null;
 
         const profileItems: ProfileItem[] = Array.isArray(profilesJson?.data?.profiles)
           ? profilesJson.data.profiles.map((p: any) => ({
@@ -104,7 +72,6 @@ export function ImportDashboard({ onNavigate }: ImportDashboardProps) {
           : [];
 
         const jobs = Array.isArray(jobsJson?.data?.jobs) ? jobsJson.data.jobs : [];
-        const schedules = Array.isArray(schedulesJson?.data?.schedules) ? schedulesJson.data.schedules : [];
 
         const parseMysql = (value: any): Date | null => {
           if (!value || typeof value !== 'string') return null;
@@ -135,21 +102,6 @@ export function ImportDashboard({ onNavigate }: ImportDashboardProps) {
           return `${diffDay} ${t('d ago')}`;
         };
 
-        const formatUntilRu = (date: Date | null): string => {
-          if (!date) return '-';
-          const now = new Date();
-          const diffMs = date.getTime() - now.getTime();
-          if (!Number.isFinite(diffMs)) return '-';
-          const diffSec = Math.floor(diffMs / 1000);
-          if (diffSec <= 0) return t('now');
-          const diffMin = Math.floor(diffSec / 60);
-          if (diffMin < 60) return `${t('in')} ${diffMin} ${t('min')}`;
-          const diffHr = Math.floor(diffMin / 60);
-          if (diffHr < 24) return `${t('in')} ${diffHr} ${t('h')}`;
-          const diffDay = Math.floor(diffHr / 24);
-          return `${t('in')} ${diffDay} ${t('d')}`;
-        };
-
         const lastJob = jobs.length ? jobs[0] : null;
         const lastStartedAt = parseMysql(lastJob?.started_at);
         const lastProcessed = typeof lastJob?.processed === 'number'
@@ -157,14 +109,6 @@ export function ImportDashboard({ onNavigate }: ImportDashboardProps) {
           : (Number(lastJob?.added || 0) + Number(lastJob?.updated || 0) + Number(lastJob?.skipped || 0) + Number(lastJob?.errors || 0));
 
         const activeProfilesCount = profileItems.filter((p) => p.is_active).length;
-        const enabledSchedules = schedules.filter((s: any) => Boolean(s.enabled));
-        const scheduledImportsCount = enabledSchedules.length;
-        const nextRunDates: Date[] = enabledSchedules
-          .map((s: any): Date | null => parseMysql(s.next_run))
-          .filter((d: Date | null): d is Date => Boolean(d));
-        const nextRun = nextRunDates.length
-          ? new Date(Math.min(...nextRunDates.map((d: Date) => d.getTime())))
-          : null;
 
         const now = new Date();
         const since24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -179,19 +123,6 @@ export function ImportDashboard({ onNavigate }: ImportDashboardProps) {
           const st = typeof j.status === 'string' ? j.status : '';
           return st === 'running' || st === 'pending' || st === 'processing';
         }).length;
-
-        const licenseLabel = (() => {
-          const info = licenseJson?.data;
-          if (info && typeof info === 'object') {
-            const isPro = Boolean(info.is_pro);
-            return isPro ? t('Commercial add-on active') : t('Default configuration');
-          }
-          const isPro = Boolean(healthJson?.data?.is_pro);
-          return isPro ? t('Commercial add-on active') : t('Default configuration');
-        })();
-
-        const cronOk = scheduledImportsCount === 0 || Boolean(nextRun);
-        const cronLabel = scheduledImportsCount === 0 ? t('No tasks') : cronOk ? t('Active') : t('Not scheduled');
 
         const queueOk = queueCount === 0;
 
@@ -218,15 +149,10 @@ export function ImportDashboard({ onNavigate }: ImportDashboardProps) {
           lastImportLabel: formatRelativeRu(lastStartedAt),
           lastImportSubtitle: lastJob ? `${t('processed')} ${lastProcessed} ${t('rows')}` : '',
           activeProfilesCount,
-          scheduledProfilesCount: enabledSchedules.length,
-          scheduledImportsCount,
-          nextRunLabel: scheduledImportsCount ? formatUntilRu(nextRun) : '-',
+          scheduledProfilesCount: 0,
           errorsLast24h,
           erroredRunsLast24h,
           queueCount,
-          licenseLabel,
-          cronLabel,
-          cronOk,
           queueOk,
         });
       } catch (e) {
@@ -288,15 +214,6 @@ export function ImportDashboard({ onNavigate }: ImportDashboardProps) {
           color="green"
           subtitle={`${stats.scheduledProfilesCount} ${t('scheduled')}`}
         />
-        {isPro && (
-          <StatsCard
-            title={t('Scheduled Imports')}
-            value={stats.scheduledImportsCount}
-            icon={Calendar}
-            color="purple"
-            subtitle={stats.scheduledImportsCount ? `${t('Next')} ${stats.nextRunLabel}` : ''}
-          />
-        )}
         <StatsCard
           title={t('Errors in 24 hours')}
           value={stats.errorsLast24h}
@@ -324,15 +241,6 @@ export function ImportDashboard({ onNavigate }: ImportDashboardProps) {
             <FolderOpen className="w-5 h-5" />
             <span className="text-sm">{t('Profiles')}</span>
           </button>
-          {isPro && (
-            <button
-              onClick={() => onNavigate('scheduled-imports')}
-              className="flex items-center gap-3 px-4 py-3 text-gray-700 rounded-lg border border-red-500 hover:bg-gray-50 transition-colors text-left"
-            >
-              <Calendar className="w-5 h-5" />
-              <span className="flex-1 text-sm">{t('Schedule')}</span>
-            </button>
-          )}
           <button
             onClick={() => onNavigate('history')}
             className="flex items-center gap-3 px-4 py-3 text-gray-700 rounded-lg border border-red-500 hover:bg-gray-50 transition-colors text-left"
@@ -346,28 +254,21 @@ export function ImportDashboard({ onNavigate }: ImportDashboardProps) {
       {/* System Status */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
         <h2 className="text-lg text-gray-900 mb-4">{t('System Status')}</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 ${stats.cronOk ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
-            <div>
-              <p className="text-sm text-gray-500">{t('Cron')}</p>
-              <p className="text-gray-900">{stats.cronLabel}</p>
-            </div>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="flex items-center gap-3">
             <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-            <div>
-              <p className="text-sm text-gray-500">{t('License')}</p>
-              <p className="text-gray-900">{stats.licenseLabel}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 ${stats.queueOk ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
             <div>
               <p className="text-sm text-gray-500">{t('Import Queue')}</p>
               <p className="text-gray-900">
                 {stats.queueCount ? `${stats.queueCount} ${t('job(s) in progress')}` : t('Empty')}
               </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className={`w-3 h-3 ${stats.queueOk ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
+            <div>
+              <p className="text-sm text-gray-500">{t('Queue Health')}</p>
+              <p className="text-gray-900">{stats.queueOk ? t('Healthy') : t('Needs attention')}</p>
             </div>
           </div>
         </div>
